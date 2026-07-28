@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[graph,data,llm,dev]"
+
+      - name: Lint
+        run: ruff check tradingagents_in/ tests/ examples/
+
+      # The suite runs on the synthetic provider with the offline engine, so it
+      # needs no API key and makes no network call.
+      - name: Test
+        run: python -m pytest -q
+
+      - name: Deterministic end-to-end run
+        env:
+          ITA_LLM_PROVIDER: offline
+          ITA_DATA_PROVIDER: synthetic
+          ITA_ONLINE_TOOLS: "false"
+        run: python -m tradingagents_in.cli.main analyse RELIANCE.NS --no-save
+
+      # The report carries a wall-clock timestamp and per-node latencies, so the
+      # committed sample cannot be byte-compared. Checking that the generator
+      # still runs is the part that actually catches breakage.
+      - name: Sample-run generator still works
+        run: python examples/generate_sample_run.py
+
+      - name: Examples still run
+        env:
+          ITA_LLM_PROVIDER: offline
+          ITA_DATA_PROVIDER: synthetic
+          ITA_ONLINE_TOOLS: "false"
+        run: |
+          python examples/fno_index_trade.py NIFTY
+          python examples/python_api.py

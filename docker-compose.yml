@@ -1,0 +1,34 @@
+services:
+  ita:
+    build: .
+    image: tradingagents-in:latest
+    env_file:
+      - .env
+    environment:
+      TZ: Asia/Kolkata
+    volumes:
+      # Decisions and the audit trail should outlive the container.
+      - ./results:/app/results
+      - ./trading_memory.md:/app/trading_memory.md
+      - ./trading_memory.jsonl:/app/trading_memory.jsonl
+      - ./.cache:/app/.cache
+    command: ["--help"]
+
+  # Deterministic run: no API key, no network, seeded tape.
+  demo:
+    build: .
+    image: tradingagents-in:latest
+    environment:
+      TZ: Asia/Kolkata
+      ITA_LLM_PROVIDER: offline
+      ITA_DATA_PROVIDER: synthetic
+      ITA_ONLINE_TOOLS: "false"
+    command: ["analyse", "RELIANCE.NS", "--report", "--no-save"]
+
+  test:
+    build: .
+    image: tradingagents-in:latest
+    environment:
+      TZ: Asia/Kolkata
+    entrypoint: ["python", "-m", "pytest"]
+    command: ["-q", "tests/"]

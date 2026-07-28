@@ -1,0 +1,95 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tradingagents-in"
+version = "0.1.0"
+description = "IndianTradingAgents - a multi-agent LLM trading research framework for NSE & BSE"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [{ name = "IndianTradingAgents contributors" }]
+keywords = ["trading", "nse", "bse", "india", "langgraph", "llm", "multi-agent", "quant"]
+classifiers = [
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Topic :: Office/Business :: Financial :: Investment",
+]
+
+dependencies = [
+    "pydantic>=2.7",
+    "pandas>=2.1",
+    "numpy>=1.26",
+    "python-dateutil>=2.9",
+    "requests>=2.32",
+    "rich>=13.7",
+    "python-dotenv>=1.0",
+    "tenacity>=8.3",
+]
+
+[project.optional-dependencies]
+# The agent graph itself. Kept optional so the data/risk layer can be used standalone.
+graph = [
+    "langgraph>=0.2.30",
+    "langchain-core>=0.3.0",
+]
+data = [
+    "yfinance>=0.2.40",
+    "feedparser>=6.0.11",
+    "beautifulsoup4>=4.12",
+    "lxml>=5.2",
+]
+llm = [
+    "langchain-openai>=0.2.0",
+    "langchain-anthropic>=0.2.0",
+    "langchain-google-genai>=2.0.0",
+    "langchain-groq>=0.2.0",
+    "langchain-ollama>=0.2.0",
+]
+brokers = [
+    "smartapi-python>=1.4.8",
+    "kiteconnect>=5.0.1",
+    "pyotp>=2.9",
+]
+dev = [
+    "pytest>=8.2",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.5",
+    "mypy>=1.10",
+]
+all = [
+    "tradingagents-in[graph,data,llm,dev]",
+]
+
+[project.scripts]
+tradingagents-in = "tradingagents_in.cli.main:main"
+ita = "tradingagents_in.cli.main:main"
+
+[project.urls]
+Homepage = "https://github.com/sanjayyaluguli-lang/niftyautotrader"
+
+[tool.setuptools.packages.find]
+include = ["tradingagents_in*"]
+
+[tool.setuptools.package-data]
+tradingagents_in = ["data/*.json", "data/*.csv"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501", "B008"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+warn_unused_ignores = false
