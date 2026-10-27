@@ -262,7 +262,7 @@ def _flow_score(flows: Any) -> float:
 def _news_tilt(bundle: MarketBundle) -> float:
     from tradingagents_in.dataflows.sentiment import score_headlines
 
-    score, count = score_headlines(bundle.company_news)
+    score, count = score_headlines(bundle.company_news, reference=bundle.session.now)
     return score if count else 0.0
 
 

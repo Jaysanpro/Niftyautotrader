@@ -17,7 +17,7 @@ from xml.etree import ElementTree
 from tradingagents_in.dataflows.cache import get_cache
 from tradingagents_in.dataflows.http import get_text
 from tradingagents_in.utils.logging import get_logger
-from tradingagents_in.utils.timeutils import IST, now_ist, to_ist
+from tradingagents_in.utils.timeutils import IST, now_ist, to_ist, as_of_moment
 
 log = get_logger(__name__)
 
@@ -56,9 +56,19 @@ class NewsItem:
 
     @property
     def age_days(self) -> float | None:
+        return self.age_days_at(None)
+
+    def age_days_at(self, reference: datetime | None) -> float | None:
+        """Age against a given moment, defaulting to now.
+
+        A dated run has to measure staleness from its own session; against the
+        wall clock every item in a 2024 backtest looks ancient and the decay
+        applied to it is meaningless.
+        """
         if self.published is None:
             return None
-        return (now_ist() - to_ist(self.published)).total_seconds() / 86400
+        anchor = reference or now_ist()
+        return (to_ist(anchor) - to_ist(self.published)).total_seconds() / 86400
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -163,7 +173,13 @@ def fetch_news(
     if config is not None and not config.get("online_tools", True):
         return []
     chosen = feeds or FEEDS
-    cutoff = now_ist() - timedelta(days=lookback_days)
+    # On a dated run the window ends at that session, not at today. Without
+    # the upper bound a backtest reads the coverage *of* the move it is about
+    # to be scored on, which is the single most effective way to invent alpha
+    # that does not exist.
+    anchor = as_of_moment(config) or now_ist()
+    dated_run = bool((config or {}).get("as_of"))
+    cutoff = anchor - timedelta(days=lookback_days)
 
     collected: list[NewsItem] = []
     for name, url in chosen.items():
@@ -172,7 +188,18 @@ def fetch_news(
         except Exception as exc:  # one dead feed must not stop the rest
             log.debug("feed %s failed: %s", name, exc)
 
-    fresh = [i for i in collected if i.published is None or to_ist(i.published) >= cutoff]
+    fresh: list[NewsItem] = []
+    for item in collected:
+        if item.published is None:
+            # An undated item cannot be shown to predate the session, so a
+            # dated run drops it rather than gambling on it. A live run keeps
+            # it: there, "undated" just means a sloppy feed.
+            if not dated_run:
+                fresh.append(item)
+            continue
+        when = to_ist(item.published)
+        if cutoff <= when <= anchor:
+            fresh.append(item)
     seen: set[str] = set()
     unique: list[NewsItem] = []
     for item in fresh:

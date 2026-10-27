@@ -247,7 +247,9 @@ class Toolkit:
 
     def _load_sentiment(self, bundle: MarketBundle, config: dict[str, Any]) -> bool:
         sources: list[SentimentSource] = []
-        score, count = sentiment.score_headlines(bundle.company_news or bundle.news_items[:20])
+        score, count = sentiment.score_headlines(
+            bundle.company_news or bundle.news_items[:20], reference=bundle.session.now
+        )
         if count:
             sources.append(
                 SentimentSource(

@@ -13,6 +13,8 @@ Design notes:
 
 from __future__ import annotations
 
+from datetime import datetime
+
 import os
 import re
 from typing import Any
@@ -80,14 +82,22 @@ def score_text(text: str) -> float:
     return max(-1.0, min(1.0, total / (hits ** 0.5) / 1.5))
 
 
-def score_headlines(items: list[NewsItem]) -> tuple[float, int]:
-    """Recency-weighted mean polarity across headlines, plus the count scored."""
+def score_headlines(
+    items: list[NewsItem], reference: datetime | None = None
+) -> tuple[float, int]:
+    """Recency-weighted mean polarity across headlines, plus the count scored.
+
+    ``reference`` is the moment recency is measured from - the run's session
+    on a dated run, so a backtest does not decay every headline to nothing for
+    the sole reason that the run happened in the past.
+    """
     scored: list[tuple[float, float]] = []
     for item in items:
         polarity = score_text(f"{item.title} {item.summary}")
         if polarity == 0.0:
             continue
-        age = item.age_days if item.age_days is not None else 3.0
+        aged = item.age_days_at(reference)
+        age = aged if aged is not None else 3.0
         weight = 1.0 / (1.0 + max(0.0, age) / 3.0)  # ~half-weight at 3 days old
         scored.append((polarity, weight))
     if not scored:

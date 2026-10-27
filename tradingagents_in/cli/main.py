@@ -79,6 +79,11 @@ def build_parser() -> argparse.ArgumentParser:
             "--analysts",
             help="Comma-separated: fundamentals,sentiment,news_macro,technical",
         )
+        p.add_argument(
+            "--as-of",
+            help="Decide a past session (YYYY-MM-DD) instead of today, using only "
+                 "data available up to that close",
+        )
         p.add_argument("--offline", action="store_true", help="No network calls, no LLM")
         p.add_argument("--no-fno", action="store_true", help="Cash segment only")
         p.add_argument("--no-save", action="store_true", help="Do not write results or memory")
@@ -100,6 +105,28 @@ def build_parser() -> argparse.ArgumentParser:
              "approved positions across the batch",
     )
     add_common(p_batch)
+
+    p_back = sub.add_parser(
+        "backtest", help="Walk the desk across past sessions and score its decisions"
+    )
+    p_back.add_argument("symbols", nargs="+")
+    p_back.add_argument("--start", required=True, help="First session (YYYY-MM-DD)")
+    p_back.add_argument("--end", required=True, help="Last session (YYYY-MM-DD)")
+    p_back.add_argument(
+        "--max-hold-days", type=int, default=10,
+        help="Sessions a position is carried before it is closed at the market (default 10)",
+    )
+    p_back.add_argument(
+        "--step-days", type=int, default=1,
+        help="Decide every Nth calendar day instead of every session (default 1)",
+    )
+    p_back.add_argument(
+        "--fill-anywhere", action="store_true",
+        help="Fill at the next close even when price is outside the entry band. "
+             "Off by default: the desk's approval assumes the band, so filling "
+             "outside it scores a trade it did not approve",
+    )
+    add_common(p_back)
 
     sub.add_parser("session", help="Market session status (IST) and expiry calendar")
     sub.add_parser("providers", help="LLM providers with credentials present")
@@ -154,6 +181,8 @@ def overrides_from_args(args: argparse.Namespace) -> dict[str, Any]:
         out["selected_analysts"] = [a.strip() for a in args.analysts.split(",") if a.strip()]
     if getattr(args, "no_fno", False):
         out["allow_fno"] = False
+    if getattr(args, "as_of", None):
+        out["as_of"] = args.as_of
     if getattr(args, "log_level", None):
         out["log_level"] = args.log_level
     return out
@@ -227,6 +256,43 @@ def cmd_batch(args: argparse.Namespace) -> int:
         f"{inr_plain(total_risk)} "
         f"({total_risk / float(config['capital_inr']) * 100:.2f}% of the book)"
     )
+    return 0
+
+
+def cmd_backtest(args: argparse.Namespace) -> int:
+    from tradingagents_in.backtest import render_summary, walk_forward
+    from tradingagents_in.graph.runner import IndianTradingAgents
+
+    config = build_config(overrides_from_args(args))
+    app = IndianTradingAgents(config=config, use_langgraph=not args.sequential)
+    _banner(config, app.backend, quiet=args.json)
+
+    result = walk_forward(
+        app, args.symbols, args.start, args.end,
+        max_hold_days=args.max_hold_days,
+        step_days=args.step_days,
+        require_entry_band=not args.fill_anywhere,
+    )
+
+    if args.json:
+        print(json.dumps(result.summary(), indent=2, default=str))
+        return 0
+
+    _rule("backtest")
+    _print(render_summary(result))
+    if result.taken:
+        _rule("trades")
+        for t in result.taken[:25]:
+            _print(
+                f"{t.decided_on} {t.symbol:<12} {t.action:<4} "
+                f"entry {t.entry_price:>10,.2f} exit {t.exit_price:>10,.2f} "
+                f"{t.exit_reason:<8} R {t.r_multiple if t.r_multiple is not None else 0:>6.2f} "
+                f"Rs {t.pnl_inr:>12,.2f}"
+            )
+        if len(result.taken) > 25:
+            _print(f"... and {len(result.taken) - 25} more")
+    _print()
+    _print("Past decisions scored on past prices. Not a forecast, and not advice.")
     return 0
 
 
@@ -377,8 +443,12 @@ def _banner(config: dict[str, Any], backend: str, quiet: bool = False) -> None:
 
     from tradingagents_in.dataflows.calendar_in import session_context
     from tradingagents_in.llm.provider import describe
+    from tradingagents_in.utils.timeutils import as_of_moment
 
-    ctx = session_context()
+    # On a dated run the header must show the session being decided. Printing
+    # today's date over a decision made for last March is how a backtested
+    # result gets mistaken for a live one.
+    ctx = session_context(when=as_of_moment(config))
     body = (
         f"Capital {inr_plain(config['capital_inr'])} · {config['profile']} profile · "
         f"risk {config['risk_per_trade_pct']}%/trade · max position "
@@ -388,6 +458,8 @@ def _banner(config: dict[str, Any], backend: str, quiet: bool = False) -> None:
         f"analysts {', '.join(config['selected_analysts'])}\n"
         f"Market: {ctx.phase.value} · {ctx.now:%Y-%m-%d %H:%M} IST · "
         f"weekly expiry {ctx.weekly_expiry}"
+        + (f"\nAS OF {config['as_of']} - historical run, not a live decision"
+           if config.get("as_of") else "")
     )
     if HAVE_RICH:
         console.print(
@@ -490,6 +562,7 @@ def main(argv: list[str] | None = None) -> int:
 
     handlers = {
         "analyse": cmd_analyse, "analyze": cmd_analyse, "run": cmd_analyse,
+        "backtest": cmd_backtest,
         "batch": cmd_batch,
         "session": cmd_session,
         "providers": cmd_providers,
