@@ -1,0 +1,68 @@
+# Build the web image and deploy it to Cloud Run.
+#
+#   gcloud builds submit --config deploy/cloudbuild.yaml
+#
+# The -f is load-bearing: the root Dockerfile builds the run-once CLI image
+# (ENTRYPOINT ["ita"]), which would start, print help, exit, and fail the
+# health check. Only Dockerfile.web builds a long-lived server.
+
+substitutions:
+  _REGION: asia-south1          # Mumbai
+  _SERVICE: ita-web
+  _REPO: ita
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$BUILD_ID
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:latest
+
+steps:
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - Dockerfile.web
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$BUILD_ID
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:latest
+      - .
+
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - --all-tags
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}
+
+  - id: deploy
+    name: gcr.io/google.com/cloudbuild/gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE}
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$BUILD_ID
+      - --region=${_REGION}
+      - --platform=managed
+      - --allow-unauthenticated
+      # Measured: 103 MiB idle, 136 MiB peak over six analyses. 512Mi is
+      # headroom, not a guess. Raise it when you switch to a real LLM provider.
+      - --memory=512Mi
+      - --cpu=1
+      # Cloud Run's default is 80 requests per instance. The app admits
+      # ITA_WEB_CONCURRENCY (2) at a time and 503s past that, so a high value
+      # would turn load into errors instead of new instances. Keep the two
+      # numbers equal and let Cloud Run scale out.
+      - --concurrency=2
+      # Scales to zero, so an idle deployment costs nothing. The ceiling is a
+      # cost guard: without it a loop of requests can fan out indefinitely.
+      - --min-instances=0
+      - --max-instances=3
+      # Generous for the offline engine (~0.6s warm); an LLM provider needs it.
+      - --timeout=600
+      # Pays for a faster cold start, which is where the graph gets built.
+      - --cpu-boost
+      - --set-env-vars=ITA_LLM_PROVIDER=offline,ITA_DATA_PROVIDER=synthetic,ITA_ONLINE_TOOLS=false,ITA_WEB_CONCURRENCY=2,TZ=Asia/Kolkata
