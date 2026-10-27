@@ -53,6 +53,11 @@ brokers = [
     "kiteconnect>=5.0.1",
     "pyotp>=2.9",
 ]
+# The HTTP front end in web/. Optional, so a CLI-only install stays slim.
+web = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+]
 dev = [
     "pytest>=8.2",
     "pytest-asyncio>=0.23",
