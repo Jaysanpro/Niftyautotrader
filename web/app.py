@@ -20,11 +20,13 @@ import threading
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from tradingagents_in.config.default_config import build_config
 from tradingagents_in.graph.runner import IndianTradingAgents
+from tradingagents_in.utils.timeutils import parse_date
 
 # NSE/BSE tickers, optionally with the Yahoo suffix the dataflows expect.
 _SYMBOL_RE = re.compile(r"^[A-Za-z0-9&._-]{1,24}$")
@@ -46,6 +48,25 @@ app = FastAPI(
     openapi_url="/api/openapi.json",
 )
 
+# A browser front end served from somewhere else - a dashboard on Vercel -
+# is a cross-origin caller and needs to be named here. Empty by default: the
+# bundled page is same-origin, so nothing is opened up unless it is asked for.
+# A Vercel deployment that proxies /api through its own domain stays
+# same-origin and needs nothing set.
+_origins = [o.strip() for o in os.getenv("ITA_WEB_CORS_ORIGINS", "").split(",") if o.strip()]
+if _origins:
+    app.add_middleware(
+        CORSMiddleware,
+        # Exact origins only. allow_origins=["*"] would let any page on the
+        # internet drive this deployment's analysis budget.
+        allow_origins=_origins,
+        allow_origin_regex=os.getenv("ITA_WEB_CORS_ORIGIN_REGEX") or None,
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["Content-Type"],
+        max_age=600,
+    )
+
 
 def _runner(capital_inr: float, profile: str) -> IndianTradingAgents:
     key = (capital_inr, profile)
@@ -63,6 +84,11 @@ class AnalyseRequest(BaseModel):
     symbol: str = Field("RELIANCE.NS", max_length=24)
     capital_inr: float = Field(1_000_000.0, gt=0, le=1e11)
     profile: str = Field("retail")
+    as_of: str | None = Field(
+        None,
+        max_length=10,
+        description="Decide a past session (YYYY-MM-DD) using only data up to that close",
+    )
 
 
 @app.get("/healthz", include_in_schema=False)
@@ -94,6 +120,15 @@ def analyse(req: AnalyseRequest) -> JSONResponse:
     if req.profile not in {"retail", "institutional"}:
         raise HTTPException(status_code=422, detail="profile must be retail or institutional")
 
+    as_of = (req.as_of or "").strip() or None
+    if as_of is not None:
+        try:
+            parse_date(as_of)
+        except ValueError:
+            raise HTTPException(
+                status_code=422, detail=f"as_of must be YYYY-MM-DD, got {as_of!r}"
+            ) from None
+
     if not _slots.acquire(blocking=False):
         raise HTTPException(
             status_code=503,
@@ -103,7 +138,7 @@ def analyse(req: AnalyseRequest) -> JSONResponse:
         runner = _runner(req.capital_inr, req.profile)
         # save=False: the container filesystem is ephemeral, and a web caller
         # has not asked for a decision to be written to the audit log.
-        decision = runner.analyse(symbol, save=False)
+        decision = runner.analyse(symbol, save=False, as_of=as_of)
         payload = decision.model_dump(mode="json")
         payload["summary_markdown"] = runner.summary(decision)
     except HTTPException:

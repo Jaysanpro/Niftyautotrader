@@ -80,6 +80,37 @@ real money at your provider, and `--max-instances` is the only thing bounding
 how fast. And the output stops being deterministic, so a decision you see is
 no longer reproducible from the inputs alone.
 
+## The Vercel dashboard
+
+`frontend/` is a static dashboard for the same API: no build step, no
+framework, so it deploys as files and there is no toolchain to break.
+
+1. Put the Cloud Run URL into `frontend/vercel.json`, replacing
+   `REPLACE-ME.a.run.app` in the rewrite.
+2. On vercel.com: New Project, import this repo, set **Root Directory** to
+   `frontend`, framework preset **Other**. No build command.
+
+The rewrite proxies `/api/*` from the Vercel domain to Cloud Run, so the
+browser only ever talks to its own origin and **there is no CORS to
+configure**. That is the whole reason it is set up this way.
+
+To call a backend directly instead - a different deployment, or a local one -
+open Settings in the dashboard and set the API base. That *is* cross-origin,
+so the backend has to name the Vercel domain:
+
+```bash
+gcloud run services update ita-web --region=asia-south1 \
+    --set-env-vars=ITA_WEB_CORS_ORIGINS=https://your-project.vercel.app
+```
+
+Several origins are comma-separated; `ITA_WEB_CORS_ORIGIN_REGEX` covers
+preview deployments. Unset by default, so nothing is opened up unasked, and
+`*` is deliberately not supported: any page on the internet could then spend
+this deployment's analysis budget.
+
+The dashboard also exposes the **as-of** date, so a past session can be
+re-decided from the browser using only what was knowable by that close.
+
 ## Other hosts
 
 `Dockerfile.web` is a plain image with no Cloud Run specifics, so it runs

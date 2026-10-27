@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IndianTradingAgents</title>
+<meta name="description" content="Multi-agent LLM trading research for NSE &amp; BSE.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='13'>&#128200;</text></svg>">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <h1>IndianTradingAgents</h1>
+      <div class="sub">Multi-agent research for NSE &amp; BSE</div>
+    </div>
+    <button id="settings-toggle" class="ghost" type="button" aria-expanded="false">Settings</button>
+  </header>
+
+  <div id="status" class="status" role="status">Connecting to the analysis API&hellip;</div>
+
+  <section id="settings" class="card hidden">
+    <label for="api-base">API base URL</label>
+    <input id="api-base" placeholder="/api" spellcheck="false" autocomplete="off">
+    <p class="hint">
+      Leave blank to use this site's own <code>/api</code>, which Vercel proxies
+      to the backend. Point it at a Cloud Run URL to call one directly &mdash;
+      that origin must then be listed in <code>ITA_WEB_CORS_ORIGINS</code> on
+      the backend, or the browser will block it.
+    </p>
+    <div class="row">
+      <button id="save-settings" type="button">Save</button>
+      <button id="reset-settings" class="ghost" type="button">Reset</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <form id="form">
+      <div class="field grow">
+        <label for="symbol">Symbol</label>
+        <input id="symbol" value="RELIANCE.NS" spellcheck="false" autocomplete="off" required>
+      </div>
+      <div class="field">
+        <label for="capital">Capital (INR)</label>
+        <input id="capital" type="number" value="1000000" min="1000" step="1000" required>
+      </div>
+      <div class="field">
+        <label for="profile">Profile</label>
+        <select id="profile">
+          <option value="retail">retail</option>
+          <option value="institutional">institutional</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="asof">As of <span class="muted">(optional)</span></label>
+        <input id="asof" type="date" aria-describedby="asof-hint">
+      </div>
+      <div class="field">
+        <button id="go" type="submit">Analyse</button>
+      </div>
+    </form>
+    <p id="asof-hint" class="hint">
+      Leave the date empty to decide today. Set it to re-decide a past session
+      using only what was knowable by that close.
+    </p>
+    <div id="presets" class="chips"></div>
+  </section>
+
+  <div id="out"></div>
+
+  <section id="history-card" class="card hidden">
+    <h2>Recent runs</h2>
+    <div id="history"></div>
+    <button id="clear-history" class="ghost small" type="button">Clear</button>
+  </section>
+
+  <footer>
+    Research output, not investment advice. Verify against the exchange and
+    consult a SEBI-registered adviser.
+  </footer>
+</div>
+<script src="/app.js"></script>
+</body>
+</html>
