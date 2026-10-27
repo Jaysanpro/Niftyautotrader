@@ -15,6 +15,7 @@ from tradingagents_in.dataflows.http import get_json, nse_api
 from tradingagents_in.dataflows.market_data import fetch_ohlcv
 from tradingagents_in.models.analyst import FlowSnapshot, MacroIndicator
 from tradingagents_in.utils.logging import get_logger
+from tradingagents_in.utils.timeutils import as_of_date
 
 log = get_logger(__name__)
 
@@ -86,7 +87,7 @@ def fetch_fii_dii_flows(config: dict[str, Any] | None = None) -> FlowSnapshot:
         return FlowSnapshot(interpretation="offline mode - flows not fetched")
 
     cache = get_cache(config)
-    key = {"as_of": str(date.today())}
+    key = {"as_of": str(as_of_date(config))}
     hit = cache.get("fii_dii", key)
     if hit is not None:
         return hit
@@ -215,9 +216,13 @@ RECURRING_EVENTS: tuple[tuple[str, str], ...] = (
 )
 
 
-def upcoming_events(within_days: int = 21) -> list[str]:
-    """Dated catalysts inside the horizon, plus the standing recurring list."""
-    today = date.today()
+def upcoming_events(within_days: int = 21, as_of: date | None = None) -> list[str]:
+    """Dated catalysts inside the horizon, plus the standing recurring list.
+
+    ``as_of`` anchors the horizon to the session being decided: a run dated
+    last March should be looking at that March's Budget, not next year's.
+    """
+    today = as_of or date.today()
     events: list[str] = []
 
     # Union Budget

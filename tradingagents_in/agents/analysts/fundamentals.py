@@ -286,7 +286,8 @@ def _governance_flags(f: dict[str, Any], bundle: MarketBundle) -> list[str]:
 
     from tradingagents_in.dataflows.corporate_actions import recent_price_adjusting
 
-    recent = recent_price_adjusting(bundle.corporate_actions, within_days=180)
+    recent = recent_price_adjusting(bundle.corporate_actions, within_days=180,
+                                    as_of=bundle.session.trade_date)
     if recent:
         flags.append(
             "Recent price-adjusting corporate action(s): "

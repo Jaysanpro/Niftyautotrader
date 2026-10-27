@@ -343,7 +343,8 @@ def check_tradability(
     if bundle.corporate_actions:
         from tradingagents_in.dataflows.corporate_actions import upcoming_actions
 
-        pending = upcoming_actions(bundle.corporate_actions, within_days=30)
+        pending = upcoming_actions(bundle.corporate_actions, within_days=30,
+                                   as_of=bundle.session.trade_date)
         if pending:
             out.append(
                 RuleBreach(

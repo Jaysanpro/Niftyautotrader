@@ -18,7 +18,7 @@ from tradingagents_in.dataflows.cache import get_cache
 from tradingagents_in.dataflows.calendar_in import previous_trading_day
 from tradingagents_in.models.base import SymbolRef
 from tradingagents_in.utils.logging import get_logger
-from tradingagents_in.utils.timeutils import IST
+from tradingagents_in.utils.timeutils import IST, as_of_date
 
 log = get_logger(__name__)
 
@@ -94,7 +94,9 @@ def fetch_ohlcv(
     covered, so a single bad ticker in a batch never kills the run.
     """
     yf_symbol = symbol.yf_symbol if isinstance(symbol, SymbolRef) else str(symbol)
-    end_date = end or date.today()
+    # A dated run must not see bars after its as-of date; that is the most
+    # direct form of lookahead there is.
+    end_date = end or as_of_date(config)
     start_date = _clamp_period(interval, end_date - timedelta(days=lookback_days), end_date)
 
     cache = get_cache(config)
@@ -140,7 +142,8 @@ def fetch_multi_timeframe(
     for tf in timeframes:
         # Intraday frames need far less calendar history than daily ones.
         days = lookback_days if tf in ("1d", "1wk", "1mo") else min(lookback_days, 59)
-        df = fetch_ohlcv(symbol, interval=tf, lookback_days=days, config=config)
+        df = fetch_ohlcv(symbol, interval=tf, lookback_days=days,
+                         end=as_of_date(config), config=config)
         if not df.empty:
             out[tf] = df
     return out
@@ -150,7 +153,10 @@ def fetch_quote(symbol: str | SymbolRef, config: dict[str, Any] | None = None) -
     """Last price and session stats. Falls back to the daily bar if needed."""
     yf_symbol = symbol.yf_symbol if isinstance(symbol, SymbolRef) else str(symbol)
     cache = get_cache(config)
-    hit = cache.get("quote", {"symbol": yf_symbol})
+    # The session is part of the key: a dated run and a live run ask about the
+    # same symbol but must never be served each other's quote.
+    session = str(previous_trading_day(as_of_date(config) + timedelta(days=1)))
+    hit = cache.get("quote", {"symbol": yf_symbol, "as_of": session})
     if hit is not None:
         return hit
 
@@ -194,8 +200,8 @@ def fetch_quote(symbol: str | SymbolRef, config: dict[str, Any] | None = None) -
     prev, last = quote.get("previous_close"), quote.get("last_price")
     if prev and last:
         quote["change_pct"] = round((last - prev) / prev * 100, 3)
-    quote["as_of_session"] = str(previous_trading_day(date.today() + timedelta(days=1)))
-    cache.set("quote", {"symbol": yf_symbol}, quote)
+    quote["as_of_session"] = session
+    cache.set("quote", {"symbol": yf_symbol, "as_of": session}, quote)
     return quote
 
 

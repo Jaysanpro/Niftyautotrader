@@ -67,7 +67,9 @@ def make_gather_node(config: dict[str, Any]) -> NodeFn:
     def gather(state: dict[str, Any]) -> dict[str, Any]:
         def body() -> dict[str, Any]:
             symbol = state["symbol"]
-            bundle = toolkit.gather(symbol)
+            # Read per run, not from the node's build-time config: one graph
+            # serves every date in a walk-forward sweep.
+            bundle = toolkit.gather(symbol, as_of=state.get("config", {}).get("as_of"))
             return {
                 "symbol_ref": bundle.ref,
                 "market_bundle": {"bundle": bundle},

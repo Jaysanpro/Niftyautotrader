@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import time
 import uuid
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -76,15 +77,25 @@ class IndianTradingAgents:
         portfolio: PortfolioSnapshot | None = None,
         run_id: str | None = None,
         save: bool = True,
+        as_of: str | date | None = None,
     ) -> FinalDecision:
-        """Run the full agent pipeline on one symbol."""
+        """Run the full agent pipeline on one symbol.
+
+        ``as_of`` decides a past session instead of today: prices, calendar,
+        corporate actions and macro events are all resolved against that date.
+        The override rides in the run's own config copy rather than on the
+        instance, so concurrent runs at different dates cannot bleed into each
+        other.
+        """
         started = time.time()
         run_id = run_id or f"{symbol.replace('.', '_').upper()}-{uuid.uuid4().hex[:8]}"
+
+        config = self.config if as_of is None else {**self.config, "as_of": str(as_of)}
 
         initial: dict[str, Any] = {
             "symbol": symbol,
             "run_id": run_id,
-            "config": self.config,
+            "config": config,
             "portfolio": portfolio or self.portfolio or _flat_book(self.config),
             "errors": [],
             "telemetry": {},
@@ -100,7 +111,7 @@ class IndianTradingAgents:
         log.info("analysing %s (run %s)", symbol, run_id)
         state = self.app.invoke(initial, **invoke_kwargs)
 
-        final = build_final_decision(state, self.config, time.time() - started)
+        final = build_final_decision(state, config, time.time() - started)
         self._last_state = state
 
         if save:
@@ -116,6 +127,7 @@ class IndianTradingAgents:
         *,
         save: bool = True,
         accumulate: bool = True,
+        as_of: str | date | None = None,
     ) -> dict[str, FinalDecision]:
         """Sequentially analyse a list of symbols.
 
@@ -135,7 +147,7 @@ class IndianTradingAgents:
 
         for symbol in symbols:
             try:
-                decision = self.analyse(symbol, portfolio=book, save=save)
+                decision = self.analyse(symbol, portfolio=book, save=save, as_of=as_of)
             except Exception as exc:  # noqa: BLE001 - one bad symbol must not stop a batch
                 log.error("analysis failed for %s: %s", symbol, exc)
                 continue

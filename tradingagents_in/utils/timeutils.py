@@ -58,6 +58,37 @@ def days_between(start: date, end: date) -> int:
     return (end - start).days
 
 
+def as_of_date(config: dict | None = None) -> date:
+    """The date a run should treat as "now".
+
+    ``None`` means live, so this is today. Anything else is a historical run
+    (a backtest, or re-deciding a past session), and every data source must
+    agree on which day that is - otherwise prices come from one date and the
+    calendar from another, which is the subtlest way to leak the future into a
+    decision.
+    """
+    raw = (config or {}).get("as_of")
+    return parse_date(raw) if raw else today_ist()
+
+
+def as_of_moment(config: dict | None = None) -> datetime | None:
+    """The historical instant a run is pinned to, or ``None`` when live.
+
+    Pinned to that session's close: a dated run decides on bars that are
+    complete, never on a session still trading. The walk-forward harness then
+    settles the decision at the *next* close, so the bar it is scored against
+    is one the decision could not have seen.
+    """
+    raw = (config or {}).get("as_of")
+    if not raw:
+        return None
+    # Imported here: calendar_in imports this module, so a top-level import
+    # would be a cycle.
+    from tradingagents_in.dataflows.calendar_in import MARKET_CLOSE  # noqa: PLC0415
+
+    return combine_ist(parse_date(raw), MARKET_CLOSE)
+
+
 def last_weekday_of_month(year: int, month: int, weekday: int) -> date:
     """Last occurrence of `weekday` (Mon=0) in a month - used for monthly expiry."""
     if month == 12:

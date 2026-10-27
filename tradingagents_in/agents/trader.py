@@ -404,7 +404,7 @@ def _derivative_legs(
     it knows what the risk budget affords.
     """
     if instrument == Instrument.FUTURES:
-        expiry = resolve_expiry(bundle.ref)
+        expiry = resolve_expiry(bundle.ref, when=bundle.session.trade_date)
         underlying = derivatives_underlying(bundle.ref.base_symbol)
         return [], None, FuturesSpec(
             expiry=str(expiry),
@@ -417,7 +417,8 @@ def _derivative_legs(
         return [], None, None
 
     long_side = action == Action.BUY
-    expiry = resolve_expiry(bundle.ref, horizon_days=_horizon_days(horizon))
+    expiry = resolve_expiry(bundle.ref, horizon_days=_horizon_days(horizon),
+                            when=bundle.session.trade_date)
     dte = max((expiry - bundle.session.trade_date).days, 1)
     option_type = OptionType.CE if long_side else OptionType.PE
 

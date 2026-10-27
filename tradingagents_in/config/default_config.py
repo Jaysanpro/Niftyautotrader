@@ -65,6 +65,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "lookback_days": 400,
     "technical_timeframes": ["1d", "1h", "15m"],
     "peer_count": 5,
+    # Pin the run to a past session (YYYY-MM-DD) instead of today. None is
+    # live. Every data source reads this, so a dated run cannot mix today's
+    # news with an old price.
+    "as_of": None,
     # ------------------------------------------------------- capital & risk
     "profile": "retail",  # retail | institutional
     "capital_inr": 1_000_000.0,
@@ -132,6 +136,7 @@ _ENV_MAP: dict[str, tuple[str, Any]] = {
     "ITA_MAX_RISK_ROUNDS": ("max_risk_rounds", int),
     "ITA_ONLINE_TOOLS": ("online_tools", bool),
     "ITA_LOOKBACK_DAYS": ("lookback_days", int),
+    "ITA_AS_OF": ("as_of", str),
     "ITA_CAPITAL_INR": ("capital_inr", float),
     "ITA_PROFILE": ("profile", str),
     "ITA_RISK_PER_TRADE_PCT": ("risk_per_trade_pct", float),

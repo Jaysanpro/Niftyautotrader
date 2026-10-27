@@ -19,6 +19,7 @@ from tradingagents_in.dataflows.cache import get_cache
 from tradingagents_in.dataflows.http import nse_api
 from tradingagents_in.models.base import SymbolRef
 from tradingagents_in.utils.logging import get_logger
+from tradingagents_in.utils.timeutils import as_of_date
 from tradingagents_in.utils.timeutils import parse_date
 
 log = get_logger(__name__)
@@ -62,7 +63,7 @@ def fetch_corporate_actions(
 ) -> list[CorporateAction]:
     """Dividends and splits from yfinance, plus NSE's corporate-action feed."""
     actions: list[CorporateAction] = []
-    cutoff = date.today() - timedelta(days=lookback_days)
+    cutoff = as_of_date(config) - timedelta(days=lookback_days)
 
     actions.extend(_from_yfinance(ref, cutoff, config))
     actions.extend(_from_nse(ref, cutoff, config))
@@ -155,19 +156,29 @@ def _from_nse(
     return out
 
 
-def upcoming_actions(actions: list[CorporateAction], within_days: int = 30) -> list[CorporateAction]:
-    today = date.today()
+def upcoming_actions(
+    actions: list[CorporateAction], within_days: int = 30, as_of: date | None = None
+) -> list[CorporateAction]:
+    """Ex-dates ahead of the run date.
+
+    ``as_of`` anchors the window to the session being decided rather than the
+    wall clock, so a dated run sees what was ahead of it then, not what is
+    ahead of us now.
+    """
+    today = as_of or date.today()
     horizon = today + timedelta(days=within_days)
     return [a for a in actions if a.ex_date and today <= a.ex_date <= horizon]
 
 
 def recent_price_adjusting(
-    actions: list[CorporateAction], within_days: int = 90
+    actions: list[CorporateAction], within_days: int = 90, as_of: date | None = None
 ) -> list[CorporateAction]:
     """Recent bonus/split/demerger events - the ones that break naive charts."""
-    cutoff = date.today() - timedelta(days=within_days)
+    today = as_of or date.today()
+    cutoff = today - timedelta(days=within_days)
     return [
-        a for a in actions if a.is_price_adjusting and a.ex_date and a.ex_date >= cutoff
+        a for a in actions
+        if a.is_price_adjusting and a.ex_date and cutoff <= a.ex_date <= today
     ]
 
 

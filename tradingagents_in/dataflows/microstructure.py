@@ -26,6 +26,7 @@ from tradingagents_in.models.base import SymbolRef
 from tradingagents_in.models.enums import SurveillanceFlag
 from tradingagents_in.models.risk import MarketMicrostructure
 from tradingagents_in.utils.logging import get_logger
+from tradingagents_in.utils.timeutils import as_of_date
 
 log = get_logger(__name__)
 
@@ -100,7 +101,7 @@ def fetch_fno_ban_list(config: dict[str, Any] | None = None) -> set[str]:
     if config is not None and not config.get("online_tools", True):
         return set()
     cache = get_cache(config)
-    key = {"as_of": str(date.today())}
+    key = {"as_of": str(as_of_date(config))}
     hit = cache.get("fno_ban", key)
     if hit is not None:
         return hit

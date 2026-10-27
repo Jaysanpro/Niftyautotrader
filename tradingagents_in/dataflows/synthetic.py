@@ -37,7 +37,7 @@ from tradingagents_in.models.analyst import (
     PeerMetric,
     SentimentSource,
 )
-from tradingagents_in.utils.timeutils import IST, now_ist
+from tradingagents_in.utils.timeutils import IST, now_ist, as_of_moment
 
 # A tape with a mild uptrend and 24% annualised vol - an ordinary Nifty
 # large-cap, neither a bubble nor a falling knife.
@@ -127,7 +127,10 @@ def build_synthetic_bundle(symbol: str, config: dict[str, Any] | None = None) ->
     seed = config.get("synthetic_seed")
     ref = resolve(symbol)
     exchange = ref.exchange.value if hasattr(ref.exchange, "value") else str(ref.exchange)
-    bundle = MarketBundle(ref=ref, session=session_context(exchange=exchange))
+    bundle = MarketBundle(
+        ref=ref,
+        session=session_context(when=as_of_moment(config), exchange=exchange),
+    )
 
     start_price = 24_000.0 if ref.is_index else 2_500.0
     timeframes = list(config.get("technical_timeframes", ["1d", "1h", "15m"]))

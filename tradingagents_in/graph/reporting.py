@@ -32,6 +32,7 @@ def build_final_decision(
 ) -> FinalDecision:
     """Collapse the graph state into the object callers actually consume."""
     ref = state.get("symbol_ref")
+    bundle = (state.get("market_bundle") or {}).get("bundle")
     proposal: TradeProposal | None = state.get("trade_proposal")
     risk: RiskAssessment | None = state.get("risk_assessment")
     decision: PortfolioDecision | None = state.get("portfolio_decision")
@@ -50,7 +51,10 @@ def build_final_decision(
         exchange=ref.exchange.value if ref else "NSE",
         company_name=ref.name if ref else None,
         sector=ref.sector if ref else None,
-        as_of=fmt_ist(now_ist()),
+        # The session being decided, not the clock on the wall: on a dated run
+        # those differ, and stamping a backtested decision with today's time
+        # makes the record unreadable afterwards.
+        as_of=fmt_ist(bundle.session.now if bundle is not None else now_ist()),
         run_id=state.get("run_id", ""),
         config_digest={k: config.get(k) for k in CONFIG_DIGEST_KEYS},
         final_action=decision.final_action if decision else Action.HOLD,
