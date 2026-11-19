@@ -117,7 +117,20 @@ concurrency costs a few MiB rather than a multiple. The binding constraint is
 CPU: each analysis is ~0.6s of it, so six at once on a small instance queue
 rather than fail.
 
-## The Vercel dashboard
+## Where the console comes from
+
+`Dockerfile.web` ships `frontend/`, and the app serves it at `/`. So a Railway
+or Cloud Run deployment gives you the console on its own URL, same-origin,
+with no CORS to configure and no second service to deploy. That is the
+simplest setup and the one to start from.
+
+If `/` ever answers "API is up, console is missing", the image was built
+without `frontend/` - check the `COPY frontend/ frontend/` line survived.
+
+## The Vercel dashboard (optional)
+
+Only worth it if you want the page on a CDN separately from the API. The
+backend already serves the same files.
 
 `frontend/` is a static dashboard for the same API: no build step, no
 framework, so it deploys as files and there is no toolchain to break.

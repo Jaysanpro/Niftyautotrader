@@ -22,6 +22,9 @@ RUN pip install --upgrade pip && pip install -e ".[graph,data,llm,web]"
 
 COPY tradingagents_in/ tradingagents_in/
 COPY web/ web/
+# The console. Without it the image serves an apology at / instead of a page,
+# which is exactly what happened when this line was missing.
+COPY frontend/ frontend/
 
 RUN mkdir -p /app/results /app/.cache \
     && useradd --create-home --uid 1000 ita \
