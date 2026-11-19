@@ -20,6 +20,31 @@ from tradingagents_in.utils.logging import get_logger
 log = get_logger(__name__)
 
 
+# Anthropic model families that still accept a `temperature`. Newer ones reject
+# it outright - a 400, not a warning - so sending it turns a model upgrade into
+# an outage.
+#
+# This is an accept-list rather than a reject-list on purpose: a model released
+# after this line was written falls through to "omit", which is the direction
+# the API has been moving and the one that fails safe. The cost of being wrong
+# here is a slightly less random answer; the cost of the other default is every
+# request erroring.
+_ANTHROPIC_TEMPERATURE_PREFIXES: tuple[str, ...] = (
+    "claude-3",
+    "claude-opus-4-5",
+    "claude-sonnet-4-5",
+    "claude-haiku-4-5",
+    "claude-opus-4-6",
+    "claude-sonnet-4-6",
+)
+
+
+def anthropic_accepts_temperature(model: str) -> bool:
+    """Whether this Anthropic model still takes a sampling temperature."""
+    name = (model or "").strip().lower()
+    return name.startswith(_ANTHROPIC_TEMPERATURE_PREFIXES)
+
+
 @dataclass(frozen=True)
 class ProviderSpec:
     env_key: str | None
@@ -38,8 +63,8 @@ PROVIDERS: dict[str, ProviderSpec] = {
     "anthropic": ProviderSpec(
         env_key="ANTHROPIC_API_KEY",
         openai_compatible=False,
-        default_deep="claude-sonnet-4-5",
-        default_quick="claude-haiku-4-5",
+        default_deep="claude-sonnet-5-5",
+        default_quick="claude-haiku-5-5",
     ),
     "google": ProviderSpec(
         env_key="GOOGLE_API_KEY",
@@ -135,7 +160,18 @@ def build_chat_model(config: dict[str, Any], tier: str = "quick") -> Any:
         if provider == "anthropic":
             from langchain_anthropic import ChatAnthropic  # noqa: PLC0415
 
-            return ChatAnthropic(model=model, max_tokens=max_tokens or 4096, **common)
+            kwargs = {k: v for k, v in common.items() if k != "temperature"}
+            if anthropic_accepts_temperature(model):
+                kwargs["temperature"] = common["temperature"]
+            elif config.get("llm_temperature") is not None:
+                # Said once per model build, because silently ignoring a
+                # configured value is its own kind of surprise.
+                log.info(
+                    "%s does not accept a sampling temperature; "
+                    "ITA_LLM_TEMPERATURE is not being sent.",
+                    model,
+                )
+            return ChatAnthropic(model=model, max_tokens=max_tokens or 4096, **kwargs)
 
         if provider == "google":
             from langchain_google_genai import ChatGoogleGenerativeAI  # noqa: PLC0415

@@ -21,7 +21,12 @@ from typing import Any, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
-from tradingagents_in.llm.provider import LLMUnavailable, build_chat_model, provider_is_offline
+from tradingagents_in.llm.provider import (
+    LLMUnavailable,
+    build_chat_model,
+    provider_is_offline,
+    resolve_model,
+)
 from tradingagents_in.utils.logging import get_logger
 
 log = get_logger(__name__)
@@ -32,11 +37,13 @@ _MODEL_CACHE: dict[tuple[str, str, str], Any] = {}
 
 
 def _get_model(config: dict[str, Any], tier: str) -> Any:
-    key = (
-        str(config.get("llm_provider")),
-        tier,
-        str(config.get("deep_think_model" if tier == "deep" else "quick_think_model")),
-    )
+    # The resolved id, not the configured one: an unset tier now means "the
+    # provider's default", and two providers' defaults must not share a key.
+    try:
+        model = resolve_model(config, tier)
+    except LLMUnavailable:
+        model = str(config.get("deep_think_model" if tier == "deep" else "quick_think_model"))
+    key = (str(config.get("llm_provider")), tier, model)
     if key not in _MODEL_CACHE:
         _MODEL_CACHE[key] = build_chat_model(config, tier)
     return _MODEL_CACHE[key]

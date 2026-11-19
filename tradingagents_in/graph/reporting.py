@@ -15,6 +15,7 @@ from tradingagents_in.models.research import DebateState
 from tradingagents_in.models.risk import FinalDecision, PortfolioDecision, RiskAssessment
 from tradingagents_in.models.state import ANALYST_STATE_KEYS
 from tradingagents_in.models.trade import TradeProposal
+from tradingagents_in.llm.provider import resolve_model
 from tradingagents_in.utils.formatting import bullet_list, inr_plain
 from tradingagents_in.utils.timeutils import fmt_ist, now_ist
 
@@ -23,6 +24,25 @@ CONFIG_DIGEST_KEYS = (
     "capital_inr", "risk_per_trade_pct", "max_position_pct", "max_debate_rounds",
     "max_risk_rounds", "selected_analysts", "online_tools", "data_provider",
 )
+
+
+
+def _config_digest(config: dict[str, Any]) -> dict[str, Any]:
+    """The settings worth recording alongside a decision.
+
+    The model tiers are resolved rather than copied: they default to None now
+    (meaning "the provider's default"), and a record that says the model was
+    None cannot answer the one question it exists for - which model decided.
+    """
+    digest = {k: config.get(k) for k in CONFIG_DIGEST_KEYS}
+    for key, tier in (("deep_think_model", "deep"), ("quick_think_model", "quick")):
+        if digest.get(key):
+            continue
+        try:
+            digest[key] = resolve_model(config, tier) or None
+        except Exception:  # noqa: BLE001 - a digest must never fail a run
+            pass
+    return digest
 
 
 def build_final_decision(
@@ -56,7 +76,7 @@ def build_final_decision(
         # makes the record unreadable afterwards.
         as_of=fmt_ist(bundle.session.now if bundle is not None else now_ist()),
         run_id=state.get("run_id", ""),
-        config_digest={k: config.get(k) for k in CONFIG_DIGEST_KEYS},
+        config_digest=_config_digest(config),
         final_action=decision.final_action if decision else Action.HOLD,
         approved=bool(decision.approved) if decision else False,
         confidence=decision.confidence if decision else 0.0,

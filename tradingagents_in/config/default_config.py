@@ -33,8 +33,13 @@ DEFAULT_CONFIG: dict[str, Any] = {
     # ------------------------------------------------------------------- llm
     "llm_provider": "anthropic",
     "llm_base_url": None,
-    "deep_think_model": "claude-sonnet-4-5",
-    "quick_think_model": "claude-haiku-4-5",
+    # None means "whatever this provider's default is" (see PROVIDERS in
+    # llm/provider.py). Naming a model here instead pinned one vendor's id for
+    # every provider, so switching ITA_LLM_PROVIDER to openai without also
+    # setting the model sent a Claude id to OpenAI - and made the per-provider
+    # defaults unreachable, since this value always won.
+    "deep_think_model": None,
+    "quick_think_model": None,
     "llm_temperature": 0.2,
     "llm_max_tokens": 4096,
     "llm_timeout_seconds": 120,
