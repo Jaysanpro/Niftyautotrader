@@ -23,6 +23,7 @@ selected whatever their rank.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
@@ -210,13 +211,28 @@ def screen(
     rank_by: str = "reward_risk",
     shortlist: int | None = None,
     apply_portfolio: bool = True,
+    on_progress: Callable[[dict[str, Any]], None] | None = None,
 ) -> ScreenResult:
     """Rank a universe, then fit the best of it into one book.
 
     ``shortlist`` bounds the second pass; it defaults to the configured
     ``max_open_positions``, since a name past the book's capacity cannot be
     selected however well it ranks.
+
+    ``on_progress`` is called once per name with a small dict: ``phase``,
+    ``completed``, ``total``, and the name's verdict. The count is not called
+    ``done``, because the web layer reserves that key to mean "stream over". A screen is
+    dozens of full pipeline runs - 64 for NIFTY50 - and on live data each one
+    also makes about ten network fetches, so it runs for minutes. Without this
+    the caller has nothing to show for that time and cannot tell a slow screen
+    from a hung one.
     """
+    def report(**fields: Any) -> None:
+        if on_progress is not None:
+            try:
+                on_progress(fields)
+            except Exception:  # noqa: BLE001 - a watcher must not break the screen
+                pass
     if rank_by not in RANK_KEYS:
         raise ValueError(f"rank_by must be one of {RANK_KEYS}, got {rank_by!r}")
 
@@ -226,15 +242,25 @@ def screen(
     )
 
     # ---- pass 1: merit, each name against a flat book.
-    for symbol in symbols:
+    total = len(symbols)
+    report(phase="merit", completed=0, total=total, symbol=None)
+    for index, symbol in enumerate(symbols, start=1):
         try:
             decision = app.analyse(symbol, as_of=as_of, save=False)
         except Exception as exc:  # noqa: BLE001 - one bad name must not stop the screen
             log.warning("screen: %s failed: %s", symbol, exc)
             result.errors.append(f"{symbol}: {exc}")
             result.candidates.append(Candidate(symbol=symbol, error=str(exc)))
+            report(phase="merit", completed=index, total=total, symbol=symbol,
+                   error=str(exc)[:120])
             continue
-        result.candidates.append(_candidate(symbol, decision))
+        candidate = _candidate(symbol, decision)
+        result.candidates.append(candidate)
+        report(
+            phase="merit", completed=index, total=total, symbol=candidate.symbol,
+            action=candidate.action, approved=candidate.approved_standalone,
+            reward_risk=candidate.reward_risk, conviction=candidate.conviction,
+        )
     result.scanned = len(symbols)
 
     result.candidates.sort(
@@ -252,9 +278,24 @@ def screen(
         return result
 
     by_symbol = {c.symbol: c for c in result.candidates}
+    report(phase="fit", completed=0, total=len(top), symbol=None)
+    def fit_progress(index: int, total: int, symbol: str, decision: Any) -> None:
+        taken = bool(
+            decision is not None
+            and decision.approved
+            and decision.final_action != Action.HOLD
+        )
+        report(
+            phase="fit", completed=index, total=total, symbol=symbol,
+            action=str(decision.final_action) if decision is not None else None,
+            approved=taken,
+            size_pct=float(decision.position_size_pct or 0.0) if taken else 0.0,
+        )
+
     try:
         fitted = app.analyse_many(
-            [c.symbol for c in top], save=False, accumulate=True, as_of=as_of
+            [c.symbol for c in top], save=False, accumulate=True, as_of=as_of,
+            on_each=fit_progress,
         )
     except Exception as exc:  # noqa: BLE001
         result.errors.append(f"portfolio pass: {exc}")
@@ -273,6 +314,8 @@ def screen(
             candidate.blocked_by = (
                 _short_reason(reasons[0]) if reasons else "book full"
             )
+    report(phase="fit", completed=len(top), total=len(top), symbol=None,
+           selected=len(result.selected))
     return result
 
 

@@ -229,3 +229,54 @@ def test_candidate_rank_value_handles_missing_numbers():
     bare = Candidate(symbol="X.NS")
     for key in RANK_KEYS:
         assert isinstance(bare.rank_value(key), float)
+
+
+# ----------------------------------------------------------------- progress
+
+
+def test_screen_reports_progress_for_both_passes():
+    """A screen is minutes of work, so it has to say where it has got to.
+
+    Both passes count, and the counts must be monotonic within a pass: a bar
+    that goes backwards is worse than no bar.
+    """
+    app = IndianTradingAgents(config=_cfg())
+    seen: list[dict] = []
+    result = screen(app, "NIFTYIT", on_progress=seen.append)
+
+    merit = [e for e in seen if e["phase"] == "merit"]
+    fit = [e for e in seen if e["phase"] == "fit"]
+    assert merit and fit, "both passes must report"
+
+    assert [e["completed"] for e in merit] == list(range(0, result.scanned + 1))
+    assert [e["completed"] for e in fit] == sorted(e["completed"] for e in fit)
+    assert merit[-1]["completed"] == merit[-1]["total"] == result.scanned
+
+    # Every name that was analysed is named, so the trace can show verdicts.
+    named = {e["symbol"] for e in merit if e["symbol"]}
+    assert named == {c.symbol for c in result.candidates}
+
+
+def test_progress_never_uses_the_key_done():
+    """``done`` is the web layer's "stream over" sentinel.
+
+    A progress count under that key closed the SSE stream after the first
+    name, which looked exactly like a screen that had hung.
+    """
+    app = IndianTradingAgents(config=_cfg())
+    seen: list[dict] = []
+    screen(app, "NIFTYIT", on_progress=seen.append)
+    assert seen
+    assert not any("done" in event for event in seen)
+
+
+def test_a_failing_progress_watcher_does_not_break_the_screen():
+    """The watcher is a browser connection. It may vanish mid-screen."""
+    app = IndianTradingAgents(config=_cfg())
+
+    def hostile(_event):
+        raise RuntimeError("the browser went away")
+
+    result = screen(app, "NIFTYIT", on_progress=hostile)
+    assert result.scanned == 10
+    assert result.candidates

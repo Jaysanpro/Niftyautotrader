@@ -117,6 +117,56 @@ concurrency costs a few MiB rather than a multiple. The binding constraint is
 CPU: each analysis is ~0.6s of it, so six at once on a small instance queue
 rather than fail.
 
+## How long a screen takes
+
+Worth knowing before you run one, because the honest answer is "minutes".
+
+A screen is two passes of full pipeline runs: every constituent judged against
+a flat book, then the best re-run in rank order with the book accumulating.
+For NIFTY50 that is **52 + 12 = 64 complete runs**, strictly serial, because
+the data sources are free public endpoints and parallelising them is the
+fastest way to get rate-limited into a run with no data at all.
+
+Measured on this image with the synthetic provider, which does no I/O at all:
+
+| universe | names | runs | wall clock |
+| --- | --- | --- | --- |
+| NIFTYIT | 10 | 18 | ~6 s |
+| NIFTY50 | 52 | 64 | ~21 s |
+
+That is the floor - pure compute, 0.33 s a run. On `yfinance` each run also
+makes about ten network fetches (prices over three timeframes, quote,
+benchmark, fundamentals, screener, corporate actions, news, sentiment, macro,
+microstructure), so a NIFTY50 screen is minutes rather than seconds. The
+toolkit caches per symbol for `cache_ttl_seconds` (15 minutes by default),
+which mostly spares the second pass from fetching again.
+
+So `POST /api/screen` does not block for the result. It validates the
+universe, starts the work on a thread and returns a run id at once:
+
+```json
+{"run_id": "R-...", "universe": "NIFTY50", "names": 52, "runs_expected": 64}
+```
+
+Progress then arrives on `GET /api/runs/{run_id}/stream` as server-sent
+events, one per name, with that name's verdict:
+
+```
+{"type":"progress","phase":"merit","completed":7,"total":52,"symbol":"INFY.NS",
+ "action":"BUY","approved":true,"reward_risk":1.48}
+```
+
+and the finished screen as a single `{"type":"screen", ...}` event. The
+console draws that as a progress bar with a running estimate.
+
+Two reasons it is built this way rather than served synchronously. A request
+held open for minutes with nothing on the wire is indistinguishable from a
+hang, and gets cut by any proxy with an idle timeout. And a screen that says
+"7/52, INFY BUY at R:R 1.48" is telling you something useful while you wait.
+
+If you only want a quick look, screen a sector rather than an index -
+`screen Information Technology` is ten names, not fifty-two.
+
 ## Where the console comes from
 
 `Dockerfile.web` ships `frontend/`, and the app serves it at `/`. So a Railway

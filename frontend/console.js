@@ -293,7 +293,7 @@ async function analyse(symbol) {
         say("Desk", "The run failed. The trace above says where.");
       }
 
-      if (e.done) { es.close(); resolve(); }
+      if (e.done === true) { es.close(); resolve(); }
     };
     es.onerror = () => { es.close(); resolve(); };
   });
@@ -311,11 +311,14 @@ function summarise(d) {
 }
 
 async function runScreen(universe) {
+  resetAgents();
+  state.steps = 0; state.errors = 0;
+  $("c-steps").textContent = "0"; $("c-errors").textContent = "0";
   setRunning(true, "screening");
   say("You", `screen ${universe}`, true);
   const box = openTrace();
-  traceLine(box, null, `ranking ${universe} — every name is analysed twice: `
-    + `once on merit, once against the book`);
+
+  let start;
   try {
     const res = await fetch(API + "/screen", {
       method: "POST",
@@ -323,20 +326,96 @@ async function runScreen(universe) {
       body: JSON.stringify({
         universe,
         capital_inr: Number($("capital").value) || 1000000,
+        as_of: $("asof").value || null,
       }),
     });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
-    state.screen = data;
-    show("screen");
-    traceLine(box, null, `${data.scanned} scanned · ${data.selected} fit the book`);
-    say("Desk", `${data.scanned} names scanned. ${data.passed_standalone} passed on `
-      + `merit; ${data.selected} fit the book once the caps bind.`);
+    start = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(start.detail || `HTTP ${res.status}`);
   } catch (err) {
     traceLine(box, null, String(err.message || err), "err");
-    say("Desk", "That screen did not run.");
+    setRunning(false, "failed");
+    say("Desk", "That screen did not start.");
+    return;
   }
-  setRunning(false);
+
+  // Say the cost up front. A screen is minutes, and a user who knows it is
+  // 64 runs waits; one shown a spinner assumes it has hung.
+  traceLine(box, null, `${universe}: ${start.names} names, `
+    + `${start.runs_expected} full pipeline runs — each name is analysed twice, `
+    + `once on merit and once against the book`);
+  showProgress(0, start.runs_expected, "starting");
+
+  await new Promise((resolve) => {
+    const es = new EventSource(`${API}/runs/${start.run_id}/stream`);
+    let merit = 0;
+    es.onmessage = (event) => {
+      let e;
+      try { e = JSON.parse(event.data); } catch { return; }
+
+      if (e.type === "progress") {
+        // Pass 2 continues the same bar rather than restarting it: to the
+        // person waiting it is one job, not two.
+        const overall = e.phase === "merit" ? e.completed : merit + e.completed;
+        if (e.phase === "merit") merit = Math.max(merit, e.completed);
+        state.steps = overall;
+        $("c-steps").textContent = overall;
+        showProgress(overall, start.runs_expected, e.phase);
+        if (e.symbol) {
+          const rr = e.reward_risk != null ? ` · R:R ${num(e.reward_risk)}` : "";
+          const mark = e.error ? "failed" : (e.approved ? `${e.action} ✓` : e.action || "—");
+          traceLine(box, e.symbol.replace(/\.(NS|BO)$/, ""),
+                    `${mark}${rr}`, e.error ? "err" : "");
+        }
+        if (e.error) { state.errors += 1; $("c-errors").textContent = state.errors; }
+      } else if (e.type === "screen") {
+        state.screen = e.screen;
+        show("screen");
+        say("Desk", `${e.screen.scanned} names scanned. `
+          + `${e.screen.passed_standalone} passed on merit; `
+          + `${e.screen.selected} fit the book once the caps bind.`);
+      } else if (e.type === "log") {
+        // Screens forward warnings only; an info-level flood of 64 runs would
+        // bury the progress that is the point of watching.
+        traceLine(box, null, e.message, e.level === "error" ? "err" : "warn");
+      } else if (e.type === "error") {
+        state.errors += 1;
+        $("c-errors").textContent = state.errors;
+        traceLine(box, null, e.error, "err");
+        say("Desk", "The screen failed. The trace above says where.");
+      }
+
+      if (e.done === true) { es.close(); resolve(); }
+    };
+    es.onerror = () => { es.close(); resolve(); };
+  });
+
+  hideProgress();
+  setRunning(false, state.errors && !state.screen ? "failed" : "idle");
+}
+
+// The bar under the header. Hidden markup rather than a built element, so
+// its styling lives with the rest of the console's.
+function showProgress(done, total, phase) {
+  const bar = $("screen-progress");
+  if (!bar) return;
+  bar.hidden = false;
+  const pct = total ? Math.min(100, (done / total) * 100) : 0;
+  bar.querySelector("i").style.width = pct.toFixed(1) + "%";
+  const label = phase === "fit" ? "fitting to the book" : "ranking on merit";
+  let text = `${label} · ${done}/${total} runs`;
+  if (done > 2 && state.startedAt) {
+    const per = (Date.now() - state.startedAt) / 1000 / done;
+    const left = Math.round(per * (total - done));
+    if (left > 0) {
+      text += ` · about ${left < 90 ? left + "s" : Math.round(left / 60) + " min"} left`;
+    }
+  }
+  bar.querySelector("span").textContent = text;
+}
+
+function hideProgress() {
+  const bar = $("screen-progress");
+  if (bar) bar.hidden = true;
 }
 
 function paintOps() {

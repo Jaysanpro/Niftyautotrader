@@ -29,6 +29,7 @@ from pydantic import BaseModel, Field
 
 from tradingagents_in.config.default_config import build_config
 from tradingagents_in.graph.runner import IndianTradingAgents
+from tradingagents_in.screen import RANK_KEYS
 from tradingagents_in.utils.logging import get_logger
 from tradingagents_in.utils.timeutils import parse_date
 from web.runs import registry
@@ -96,6 +97,14 @@ class AnalyseRequest(BaseModel):
         max_length=10,
         description="Decide a past session (YYYY-MM-DD) using only data up to that close",
     )
+
+
+class ScreenRequest(BaseModel):
+    universe: str = Field("NIFTY50", max_length=400)
+    rank_by: str = Field("reward_risk")
+    capital_inr: float = Field(1_000_000.0, gt=0, le=1e11)
+    profile: str = Field("retail")
+    as_of: str | None = Field(None, max_length=10)
 
 
 @app.get("/healthz", include_in_schema=False)
@@ -284,12 +293,17 @@ def stream_run(run_id: str) -> StreamingResponse:
         raise HTTPException(status_code=404, detail="No such run.")
 
     def events():
-        # Replay what already happened, so a late subscriber sees the whole run.
-        seen = 0
-        for event in list(run.events):
-            seen += 1
+        # Replay what already happened, so a late subscriber sees the whole
+        # run. The replayed events are still sitting on the queue, so track
+        # the highest sequence number sent and skip anything at or below it -
+        # otherwise every event in flight when the browser connected arrives
+        # twice, which on a screen means a progress bar that jumps backwards.
+        last_seq = 0
+        replayed = list(run.events)
+        for event in replayed:
+            last_seq = max(last_seq, event.get("seq", 0))
             yield f"data: {json.dumps(event, default=str)}\n\n"
-        if run.finished_at and seen >= len(run.events):
+        if run.finished_at and (not replayed or replayed[-1].get("done") is True):
             yield "data: {\"type\": \"status\", \"done\": true}\n\n"
             return
         while True:
@@ -300,8 +314,15 @@ def stream_run(run_id: str) -> StreamingResponse:
                 if run.finished_at:
                     return
                 continue
+            if event.get("seq", 0) <= last_seq:
+                continue
+            last_seq = event.get("seq", last_seq)
             yield f"data: {json.dumps(event, default=str)}\n\n"
-            if event.get("done"):
+            # ``is True``, not truthiness: "done" is the terminal sentinel, and
+            # a payload that carries its own "done" field must not be able to
+            # close the stream. A progress count under that key did exactly
+            # that - the screen ended after its first name.
+            if event.get("done") is True:
                 return
 
     return StreamingResponse(
@@ -317,32 +338,83 @@ def stream_run(run_id: str) -> StreamingResponse:
 
 
 @app.post("/api/screen")
-def screen_universe(payload: dict[str, Any]) -> JSONResponse:
-    """Rank a universe. The console's other way in: no symbol required."""
-    from tradingagents_in.screen import render as render_screen
-    from tradingagents_in.screen import screen as run_screen
+def screen_universe(req: ScreenRequest) -> dict[str, Any]:
+    """Start a screen and return a handle to watch it.
 
-    universe = str(payload.get("universe", "")).strip()
-    rank_by = str(payload.get("rank_by", "reward_risk"))
-    if not _slots.acquire(blocking=False):
-        raise HTTPException(status_code=503, detail="All analysis slots are busy.")
+    This does **not** block until the screen finishes, and that is the point.
+    A screen is two passes of full pipeline runs - 64 of them for NIFTY50 -
+    and on live data each one also makes about ten network fetches, so it runs
+    for minutes. Served synchronously it held one request open that whole time
+    with nothing on the wire, which looks identical to a hang in the browser
+    and gets cut by any proxy with an idle timeout.
+
+    So it starts like an analysis: a run id now, progress over
+    ``/api/runs/{id}/stream``, the result as the last event.
+    """
+    from tradingagents_in.screen import resolve_universe
+
+    universe = req.universe.strip()
+    rank_by = req.rank_by
+
+    # Resolve before taking a slot, so a misspelled universe is a fast 422
+    # rather than a run that fails a minute later.
     try:
-        runner = _runner(
-            float(payload.get("capital_inr", 1_000_000.0)),
-            str(payload.get("profile", "retail")),
-        )
-        result = run_screen(runner, universe, rank_by=rank_by)
+        symbols = resolve_universe(universe)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail=f"Screen failed: {exc}") from exc
-    finally:
-        _slots.release()
+    if rank_by not in RANK_KEYS:
+        raise HTTPException(
+            status_code=422, detail=f"rank_by must be one of {', '.join(RANK_KEYS)}"
+        )
 
-    out = result.summary()
-    out["candidates"] = [vars(c) for c in result.candidates]
-    out["text"] = render_screen(result, limit=40)
-    return JSONResponse(out)
+    as_of = (req.as_of or "").strip() or None
+    if as_of is not None:
+        try:
+            parse_date(as_of)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="as_of must be YYYY-MM-DD") from None
+
+    if not _slots.acquire(blocking=False):
+        raise HTTPException(status_code=503, detail="All analysis slots are busy.")
+
+    run = registry.create(universe.upper(), kind="screen")
+    capital = req.capital_inr
+    profile = req.profile
+
+    def work() -> dict[str, Any]:
+        from tradingagents_in.screen import render as render_screen
+        from tradingagents_in.screen import screen as run_screen
+
+        runner = _runner(capital, profile)
+        result = run_screen(
+            runner, universe, rank_by=rank_by, as_of=as_of,
+            on_progress=lambda event: run.publish({"type": "progress", **event}),
+        )
+        out = result.summary()
+        out["candidates"] = [vars(c) for c in result.candidates]
+        out["text"] = render_screen(result, limit=40)
+        return out
+
+    def body() -> None:
+        try:
+            registry.execute(run, work, result_type="screen")
+        finally:
+            _slots.release()
+
+    threading.Thread(target=body, name=f"screen-{run.run_id}", daemon=True).start()
+    return {
+        "run_id": run.run_id,
+        "universe": universe.upper(),
+        "status": run.status,
+        # The console shows this up front: a screen's cost is knowable before
+        # it starts, and "64 runs" explains the wait far better than a spinner.
+        "names": len(symbols),
+        # From the config, not from a runner: building one costs the graph
+        # build, and this response has to come back at once.
+        "runs_expected": len(symbols) + min(
+            len(symbols), int(build_config().get("max_open_positions", 12))
+        ),
+    }
 
 
 @app.get("/api/session")

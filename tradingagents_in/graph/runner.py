@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import time
 import uuid
+from collections.abc import Callable
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -34,6 +35,26 @@ from tradingagents_in.utils.logging import get_logger, setup_logging
 from tradingagents_in.utils.timeutils import now_ist
 
 log = get_logger(__name__)
+
+
+def _notify(
+    callback: Callable[[int, int, str, Any], None] | None,
+    index: int,
+    total: int,
+    symbol: str,
+    decision: Any,
+) -> None:
+    """Call a progress watcher, swallowing anything it raises.
+
+    A batch is minutes of real work. A watcher that throws - a closed browser
+    connection, say - must not take the results down with it.
+    """
+    if callback is None:
+        return
+    try:
+        callback(index, total, symbol, decision)
+    except Exception:  # noqa: BLE001 - deliberately swallowed, see above
+        log.debug("progress callback failed for %s", symbol, exc_info=True)
 
 
 class IndianTradingAgents:
@@ -128,6 +149,7 @@ class IndianTradingAgents:
         save: bool = True,
         accumulate: bool = True,
         as_of: str | date | None = None,
+        on_each: Callable[[int, int, str, FinalDecision | None], None] | None = None,
     ) -> dict[str, FinalDecision]:
         """Sequentially analyse a list of symbols.
 
@@ -141,19 +163,27 @@ class IndianTradingAgents:
         approved at the single-name limit and the desk would end the run 100%
         concentrated - every trade individually compliant, the portfolio
         indefensible.
+
+        ``on_each`` is called after every name with ``(index, total, symbol,
+        decision)`` - the decision is None if that name failed. A batch is
+        minutes of work on live data, so a caller that is showing progress
+        needs to hear about each name as it lands, not only at the end.
         """
         out: dict[str, FinalDecision] = {}
         book = _copy_book(self.portfolio or _flat_book(self.config))
 
-        for symbol in symbols:
+        total = len(symbols)
+        for index, symbol in enumerate(symbols, start=1):
             try:
                 decision = self.analyse(symbol, portfolio=book, save=save, as_of=as_of)
             except Exception as exc:  # noqa: BLE001 - one bad symbol must not stop a batch
                 log.error("analysis failed for %s: %s", symbol, exc)
+                _notify(on_each, index, total, symbol, None)
                 continue
             out[symbol] = decision
             if accumulate and decision.approved:
                 book = _apply_to_book(book, decision, self.config)
+            _notify(on_each, index, total, symbol, decision)
         return out
 
     def report(self, decision: FinalDecision) -> str:

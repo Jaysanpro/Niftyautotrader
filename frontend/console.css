@@ -340,3 +340,38 @@ kbd {
   margin-top: 26px; padding-top: 14px; border-top: 1px solid var(--line-soft);
   font-size: 10.5px; color: var(--ink-faint); line-height: 1.6;
 }
+
+/* ---- screen progress -------------------------------------------------- */
+/* A screen is dozens of pipeline runs. The bar is not decoration: without a
+   measure of how far along it is, a multi-minute screen is indistinguishable
+   from a hang. */
+.progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 18px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+.progress[hidden] { display: none; }
+.progress-bar {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line);
+  overflow: hidden;
+}
+.progress-bar > i {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 2px;
+  background: var(--accent);
+  transition: width .25s ease-out;
+}
+.progress > span { flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+
+/* A screen forwards warnings only, so they are worth marking. */
+.trace-line.warn span:last-child { color: var(--warn); }

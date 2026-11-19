@@ -47,12 +47,26 @@ class Run:
     finished_at: float | None = None
     decision: dict[str, Any] | None = None
     error: str | None = None
+    kind: str = "analyse"           # analyse | screen
     events: list[dict[str, Any]] = field(default_factory=list)
+    # A screen is dozens of analyses. Narrating every agent line from all of
+    # them would be thousands of events for one request, and would bury the
+    # per-name progress that is the only thing worth watching. So a screen
+    # keeps only the warnings; its narration is the progress events instead.
+    min_level: int = logging.INFO
     queue: queue.Queue = field(default_factory=lambda: queue.Queue(maxsize=QUEUE_MAX))
     thread_id: int | None = None
+    _seq: int = 0
+    _seq_lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def publish(self, event: dict[str, Any]) -> None:
         event.setdefault("at", time.time())
+        # A sequence number so a subscriber can tell a replayed event from a
+        # live one. Without it, replaying ``events`` and then reading ``queue``
+        # sends every event still in flight twice.
+        with self._seq_lock:
+            self._seq += 1
+            event["seq"] = self._seq
         self.events.append(event)
         try:
             self.queue.put_nowait(event)
@@ -92,7 +106,7 @@ class _RunRouter(logging.Handler):
             run = self._by_id.get(run_id) if run_id else None
             if run is None:
                 run = self._by_thread.get(record.thread)
-        if run is None:
+        if run is None or record.levelno < run.min_level:
             return
         try:
             message = record.getMessage()
@@ -149,9 +163,14 @@ class RunRegistry:
         self._runs: dict[str, Run] = {}
         self._lock = threading.Lock()
 
-    def create(self, symbol: str) -> Run:
+    def create(self, symbol: str, *, kind: str = "analyse") -> Run:
         self._evict()
-        run = Run(run_id=f"R-{uuid.uuid4().hex[:10]}", symbol=symbol)
+        run = Run(
+            run_id=f"R-{uuid.uuid4().hex[:10]}",
+            symbol=symbol,
+            kind=kind,
+            min_level=logging.WARNING if kind == "screen" else logging.INFO,
+        )
         with self._lock:
             self._runs[run.run_id] = run
         return run
@@ -179,23 +198,27 @@ class RunRegistry:
                 for run in oldest[: len(self._runs) - MAX_RUNS]:
                     self._runs.pop(run.run_id, None)
 
-    def execute(self, run: Run, work) -> None:
+    def execute(self, run: Run, work, *, result_type: str = "decision") -> None:
         """Run ``work()`` on this thread, narrating it onto the run's queue.
 
-        ``work`` returns the decision as a dict. Any exception becomes a
-        failed run with a message rather than a traceback nobody sees.
+        ``work`` returns the payload as a dict, published under ``result_type``
+        - the console switches on it. Any exception becomes a failed run with a
+        message rather than a traceback nobody sees.
         """
         _install()
         run.thread_id = threading.get_ident()
         _router.attach(run, run.thread_id)
         token = _current_run.set(run.run_id)
         run.status = "running"
-        run.publish({"type": "status", "status": "running", "symbol": run.symbol})
+        run.publish({
+            "type": "status", "status": "running",
+            "symbol": run.symbol, "kind": run.kind,
+        })
         try:
-            decision = work()
-            run.decision = decision
+            payload = work()
+            run.decision = payload
             run.status = "done"
-            run.publish({"type": "decision", "decision": decision})
+            run.publish({"type": result_type, result_type: payload})
         except Exception as exc:  # noqa: BLE001 - surfaced to the browser
             run.status = "failed"
             run.error = f"{type(exc).__name__}: {exc}"

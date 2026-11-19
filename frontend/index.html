@@ -30,6 +30,12 @@
     </div>
   </header>
 
+  <!-- Only visible during a screen. A screen is dozens of pipeline runs and
+       minutes of waiting, so it gets a bar rather than a spinner. -->
+  <div class="progress" id="screen-progress" hidden>
+    <div class="progress-bar"><i></i></div><span></span>
+  </div>
+
   <div class="body">
 
     <!-- ------------------------------------------------------- left rail -->
