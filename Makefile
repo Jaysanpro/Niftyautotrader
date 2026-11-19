@@ -1,4 +1,4 @@
-.PHONY: help install test lint fmt typecheck sample demo docker clean
+.PHONY: help install check test lint fmt typecheck sample demo docker clean
 
 help:
 	@grep -E '^[a-z-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -7,14 +7,31 @@ help:
 install:  ## Install the package with every extra
 	pip install -e ".[graph,data,llm,dev]"
 
+check:  ## Everything before a push: lint, suite, a real run, the examples
+	@echo "==> lint"
+	ruff check tradingagents_in/ tests/ examples/ web/
+	@echo "==> suite"
+	python -m pytest -q
+	@echo "==> deterministic end-to-end run"
+	ITA_LLM_PROVIDER=offline ITA_DATA_PROVIDER=synthetic ITA_ONLINE_TOOLS=false \
+	  python -m tradingagents_in.cli.main analyse RELIANCE.NS --no-save
+	@echo "==> sample-run generator"
+	python examples/generate_sample_run.py
+	@echo "==> examples"
+	ITA_LLM_PROVIDER=offline ITA_DATA_PROVIDER=synthetic ITA_ONLINE_TOOLS=false \
+	  python examples/fno_index_trade.py NIFTY
+	ITA_LLM_PROVIDER=offline ITA_DATA_PROVIDER=synthetic ITA_ONLINE_TOOLS=false \
+	  python examples/python_api.py
+	@echo "==> all green"
+
 test:  ## Run the suite (offline, synthetic, no network)
 	python -m pytest -q
 
 lint:  ## Lint with ruff
-	ruff check tradingagents_in/ tests/ examples/
+	ruff check tradingagents_in/ tests/ examples/ web/
 
 fmt:  ## Auto-fix what ruff can
-	ruff check --fix tradingagents_in/ tests/ examples/
+	ruff check --fix tradingagents_in/ tests/ examples/ web/
 
 typecheck:  ## Type-check with mypy
 	mypy tradingagents_in/

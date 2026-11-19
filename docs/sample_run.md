@@ -25,229 +25,170 @@ you get in production; only the tape and the wording change.
 
 ---
 
-# RELIANCE (RELIANCE.NS) — BUY [APPROVED]
+# RELIANCE (RELIANCE.NS) — HOLD [NOT TAKEN]
 
-_2026-07-28 20:22 IST · run `SAMPLE-RELIANCE-01` · offline · 0.5s_
+_2026-11-19 21:30 IST · run `SAMPLE-RELIANCE-01` · offline · 0.3s_
 
 ## Decision
 
-- **Action**: BUY
-- **Approved**: yes
-- **Confidence**: 67%
-- **Size**: 9.93% of capital (Rs 99,302.91)
-- **Capital at risk**: Rs 3,992.73
+- **Action**: HOLD
+- **Approved**: no
+- **Confidence**: 60%
+- **Size**: 0.00% of capital (Rs 0.00)
+- **Capital at risk**: Rs 0.00
 - **Sector**: Energy · **Exchange**: NSE
 
 ### Portfolio reasoning
 
-Takes Energy exposure to 9.9% (cap 25.0%) and total open risk to 0.40% (budget 6.0%), leaving room for 5 further ideas at full size. The position is swing in cash, which the desk can monitor alongside the 0 name(s) already open. Worst modelled single-session outcome is -Rs 9,930.29.
-
-**Conditions at execution**
-- Execute only inside 2,345.92 - 2,382.79 - chasing above the band changes the reward-risk the approval was based on.
-- Entry valid while price holds above 2,269.29; a close below it cancels the setup rather than triggering it.
-- Stop-loss order at 2,269.29 goes in with the entry, not after it.
-- Maximum 42 units; do not average down.
-- reward_risk_below_minimum: Improve the entry, widen the first target, or skip the trade.
+No position is taken, so the book is unchanged. Staying flat when the setup is absent is the decision, not the absence of one.
 
 **Review triggers**
-- Daily close below/above the technical invalidation at 2,269.29
-- Weekly expiry in 2 session(s) - reassess positioning into it
-- Weekly F&O expiry on 2026-07-30
-- Close beyond 2,269.29 on the swing timeframe
-- Entry of the scrip into the F&O ban list or an ASM/GSM stage
-- Quarterly results or a material exchange filing
+- Daily close below/above the technical invalidation at 2,990.08
+- Weekly expiry in 0 session(s) - reassess positioning into it
+- Weekly F&O expiry on 2026-11-19
+- Monthly F&O expiry on 2026-11-26
+- RBI Monetary Policy Committee decision (bi-monthly cycle)
 
 ## Trade proposal
 
-**TRADE: BUY RELIANCE.NS** via CASH / CNC / SWING
-
-- Entry: 2,345.92 - 2,382.79
-- Stop-loss: 2,269.29
-- Targets: 2,513.54 (50%), 2,660.09 (30%), 2,855.49 (20%)
-- Size: 9.93% of capital (Rs 99,302.91)
-- Risk at stop: Rs 3,992.73
-- Reward:Risk = 1.44
-- Est. round-trip cost: Rs 227.19
-
-_Invalidation:_ A daily close above 2,269.29 on rising volume. That level is the structure the entry depends on; losing it means the read was wrong, not that the position needs more room.
-
-**Execution notes**
-- Size capped by max position size, so the trade risks 0.40% rather than the full 1.00% budget.
-- Average traded value 3,494.7 Cr/day; this order is 0.000% of a session's turnover, so work it rather than sending it at market.
+**TRADE: HOLD RELIANCE.NS** — Research view is neutral, so there is no directional edge to express. Waiting on: Daily close below/above the technical invalidation at 2,990.08; Weekly expiry in 0 session(s) - reassess positioning into it; Weekly F&O expiry on 2026-11-19
 
 ## Risk assessment
 
-**Verdict: APPROVE_WITH_CHANGES** — approved 9.93% (42 units)
+**Verdict: APPROVE** — approved 0.00% (0 units)
 
-Risk budget 1.0% of Rs 10,00,000.00 = Rs 10,000.00. Stop sits 95.07 from the 2,364.36 entry, so the unconstrained size is 105 units. After the mandate caps, approved size is 42 units (9.93% of capital), risking Rs 3,992.73 at the stop.
-
-**Rulebook**
-- `WARN ` **reward_risk_below_minimum**: Reward-risk after Indian transaction charges (STT, stamp duty, exchange charges and GST) does not clear the desk minimum. [observed net R:R 1.44 (round-trip cost Rs 227.19), limit 1.50]
-
-**Stress test (INR)**
-- stop hit: -Rs 3,992.73
-- gap down 2pct: -Rs 1,986.06
-- gap down 5pct: -Rs 4,965.15
-- lower circuit hit: -Rs 9,930.29
-- index breaker 10pct: -Rs 9,930.29
-
-**Risk notes**
-- Round-trip charges are 0.229% of turnover: price must move that far just to break even before the trade earns anything.
-- 2 session(s) to weekly expiry - expect pinning and thinner depth away from high-OI strikes.
-
-**Regulatory context**
-- Equity cash settles on T+1; sale proceeds are available for withdrawal on T+1 and the shares must be in the demat account before a delivery sale.
-- Peak-margin reporting applies intraday: the broker checks margin at random snapshots, so a position that is compliant at entry can still attract a penalty.
+Not applicable: the trader proposed HOLD.
 
 ## Research view
 
-**BULLISH** · conviction 85% · debate won by bull · horizon SWING
+**NEUTRAL** · conviction 25% · debate won by neither · horizon INTRADAY
 
-The bull case carried the debate on RELIANCE by a margin of 1.21, so the desk view is constructive. This reflects argument quality and evidence, not a headcount of points made.
-
-**Decisive arguments**
-- P/E 21.2x, P/B 3.9x (fundamentals analyst, stance BULLISH, confidence 65%)
-- ROCE 24.7%, ROE 20.6% (fundamentals analyst, stance BULLISH, confidence 65%)
-- P/E 21.2x, P/B 3.9x (fundamentals analyst, stance BULLISH, confidence 65%)
-- ROCE 24.7%, ROE 20.6% (fundamentals analyst, stance BULLISH, confidence 65%)
-- F&O eligibility allows the position to be hedged or expressed with defined risk (Lot size 500; futures and options are available for hedging or a debit spread.)
-
-**Dismissed**
-- Frenzied chatter: crowded positioning raises reversal risk — weaker evidence (0.21) than the opposing case
-- Sentiment is a coincident indicator: it confirms moves, it does not lead them — weaker evidence (0.21) than the opposing case
-- Frenzied chatter: crowded positioning raises reversal risk — weaker evidence (0.21) than the opposing case
+The debate on RELIANCE did not resolve (margin +0.15). Neither side established a case strong enough to commit capital; the honest answer is to wait for one of the named monitorables to resolve.
 
 ## Debate transcript (2 round(s))
 
-**BULL · round 1** (confidence 57%)
+**BULL · round 1** (confidence 50%)
 
-_Thesis:_ The bull case on RELIANCE rests on the fundamentals, news_macro, technical leg(s), which point to upside at Rs 2,366.99.
+_Thesis:_ The bull case on RELIANCE rests on the news_macro leg(s), which point to upside at Rs 2,813.46.
 
 **Points**
-- P/E 21.2x, P/B 3.9x — fundamentals analyst, stance BULLISH, confidence 65%
-- ROCE 24.7%, ROE 20.6% — fundamentals analyst, stance BULLISH, confidence 65%
 - Macro regime: range-bound / mixed — no single dominant cross-asset driver — news_macro analyst, stance MILDLY_BULLISH, confidence 44%
 - Flows: FII net buy Rs 1,240 cr; DII net buy Rs 860 cr. Both sides buying - the strongest flow backdrop for a sustained up-move. — news_macro analyst, stance MILDLY_BULLISH, confidence 44%
-- 1d: uptrend, signal bullish, RSI 59 — technical analyst, stance MILDLY_BULLISH, confidence 59%
-- 15m: sideways, signal bullish, RSI 70 — technical analyst, stance MILDLY_BULLISH, confidence 59%
 - F&O eligibility allows the position to be hedged or expressed with defined risk — Lot size 500; futures and options are available for hedging or a debit spread.
 - No surveillance flag and not in the F&O ban list — The scrip is freely tradable with normal margins and no settlement restriction.
+- Deep liquidity at Rs 4384 cr traded per day — Institutional-scale positions can be built and exited with minimal impact cost.
+- Domestic institutions are net buyers — FII net buy Rs 1,240 cr; DII net buy Rs 860 cr. Both sides buying - the strongest flow backdrop for a sustained up-move.
 
 **Rebuttals**
 - Timeframes disagree, so any entry is a lower-conviction trade — Raised directly against the opposing case from analyst findings
 
 **Conceded**
-- (none)
+- The technical analyst reads MILDLY_BEARISH (RELIANCE at Rs 2,813.46 is in a sideways on the 1d timeframe with RSI at 44 and Supertrend at 2,750.72 pointing long. Timeframes disagree (1)
 
 
 ---
 
-**BEAR · round 1** (confidence 43%)
+**BEAR · round 1** (confidence 50%)
 
-_Thesis:_ No analyst leg reads bear on RELIANCE outright, so the case rests on the risks the fundamentals, news_macro, sentiment, technical analyst(s) named against their own stance: GST rate changes, sector-specific levies and Union Budget measures can reset margins in a single announcement
+_Thesis:_ The bear case on RELIANCE rests on the technical leg(s), which point to downside at Rs 2,813.46.
 
 **Points**
-- GST rate changes, sector-specific levies and Union Budget measures can reset margins in a single announcement — Risk named by the fundamentals analyst itself, against its own BULLISH stance
-- Frenzied chatter: crowded positioning raises reversal risk — Risk named by the sentiment analyst itself, against its own NEUTRAL stance
+- GST rate changes, sector-specific levies and Union Budget measures can reset margins in a single announcement — Risk named by the fundamentals analyst itself, against its own NEUTRAL stance
 - Sentiment is a coincident indicator: it confirms moves, it does not lead them — Risk named by the sentiment analyst itself, against its own NEUTRAL stance
+- Expiry session: derivative unwinding distorts index and cash prices — Risk named by the news_macro analyst itself, against its own MILDLY_BULLISH stance
 - Budget (1 February) and RBI policy dates can reprice an entire sector in one session — Risk named by the news_macro analyst itself, against its own MILDLY_BULLISH stance
-- Commodity price and import-duty changes flow straight through to margins — Risk named by the news_macro analyst itself, against its own MILDLY_BULLISH stance
-- Timeframes disagree, so any entry is a lower-conviction trade — Risk named by the technical analyst itself, against its own MILDLY_BULLISH stance
+- 1d: sideways, signal neutral, RSI 44 — technical analyst, stance MILDLY_BEARISH, confidence 56%
+- 1h: sideways, signal bearish, RSI 37 — technical analyst, stance MILDLY_BEARISH, confidence 56%
+- Entering on expiry day invites pinning and unwind noise — Prices gravitate toward high open-interest strikes into the close, so intraday levels are unreliable.
 
 **Rebuttals**
 - GST rate changes, sector-specific levies and Union Budget measures can reset margins in a single announcement — Raised directly against the opposing case from analyst findings
 
 **Conceded**
-- The fundamentals analyst reads BULLISH (RELIANCE: At 21.2x trailing earnings versus a peer median of 30.6x, RELIANCE trades at a material discount (-30.4%). Business quality reads )
 - The news_macro analyst reads MILDLY_BULLISH (Macro backdrop for RELIANCE (Energy): range-bound / mixed — no single dominant cross-asset driver. FII net buy Rs 1,240 cr; DII net buy Rs 8)
-- The technical analyst reads MILDLY_BULLISH (RELIANCE at Rs 2,366.99 is in a uptrend on the 1d timeframe with RSI at 59 and Supertrend at 2,254.62 pointing long. Timeframes disagree (1d)
 
 
 ---
 
-**BULL · round 2** (confidence 57%)
+**BULL · round 2** (confidence 50%)
 
-_Thesis:_ The bull case on RELIANCE rests on the fundamentals, news_macro, technical leg(s), which point to upside at Rs 2,366.99.
+_Thesis:_ The bull case on RELIANCE rests on the news_macro leg(s), which point to upside at Rs 2,813.46.
 
 **Points**
-- P/E 21.2x, P/B 3.9x — fundamentals analyst, stance BULLISH, confidence 65%
-- ROCE 24.7%, ROE 20.6% — fundamentals analyst, stance BULLISH, confidence 65%
 - Macro regime: range-bound / mixed — no single dominant cross-asset driver — news_macro analyst, stance MILDLY_BULLISH, confidence 44%
 - Flows: FII net buy Rs 1,240 cr; DII net buy Rs 860 cr. Both sides buying - the strongest flow backdrop for a sustained up-move. — news_macro analyst, stance MILDLY_BULLISH, confidence 44%
-- 1d: uptrend, signal bullish, RSI 59 — technical analyst, stance MILDLY_BULLISH, confidence 59%
-- 15m: sideways, signal bullish, RSI 70 — technical analyst, stance MILDLY_BULLISH, confidence 59%
 - F&O eligibility allows the position to be hedged or expressed with defined risk — Lot size 500; futures and options are available for hedging or a debit spread.
 - No surveillance flag and not in the F&O ban list — The scrip is freely tradable with normal margins and no settlement restriction.
+- Deep liquidity at Rs 4384 cr traded per day — Institutional-scale positions can be built and exited with minimal impact cost.
+- Domestic institutions are net buyers — FII net buy Rs 1,240 cr; DII net buy Rs 860 cr. Both sides buying - the strongest flow backdrop for a sustained up-move.
 
 **Rebuttals**
 - Timeframes disagree, so any entry is a lower-conviction trade — Raised directly against the opposing case from analyst findings
 
 **Conceded**
-- (none)
+- The technical analyst reads MILDLY_BEARISH (RELIANCE at Rs 2,813.46 is in a sideways on the 1d timeframe with RSI at 44 and Supertrend at 2,750.72 pointing long. Timeframes disagree (1)
 
 
 ---
 
-**BEAR · round 2** (confidence 43%)
+**BEAR · round 2** (confidence 50%)
 
-_Thesis:_ No analyst leg reads bear on RELIANCE outright, so the case rests on the risks the fundamentals, news_macro, sentiment, technical analyst(s) named against their own stance: GST rate changes, sector-specific levies and Union Budget measures can reset margins in a single announcement
+_Thesis:_ The bear case on RELIANCE rests on the technical leg(s), which point to downside at Rs 2,813.46.
 
 **Points**
-- GST rate changes, sector-specific levies and Union Budget measures can reset margins in a single announcement — Risk named by the fundamentals analyst itself, against its own BULLISH stance
-- Frenzied chatter: crowded positioning raises reversal risk — Risk named by the sentiment analyst itself, against its own NEUTRAL stance
+- GST rate changes, sector-specific levies and Union Budget measures can reset margins in a single announcement — Risk named by the fundamentals analyst itself, against its own NEUTRAL stance
 - Sentiment is a coincident indicator: it confirms moves, it does not lead them — Risk named by the sentiment analyst itself, against its own NEUTRAL stance
+- Expiry session: derivative unwinding distorts index and cash prices — Risk named by the news_macro analyst itself, against its own MILDLY_BULLISH stance
 - Budget (1 February) and RBI policy dates can reprice an entire sector in one session — Risk named by the news_macro analyst itself, against its own MILDLY_BULLISH stance
-- Commodity price and import-duty changes flow straight through to margins — Risk named by the news_macro analyst itself, against its own MILDLY_BULLISH stance
-- Timeframes disagree, so any entry is a lower-conviction trade — Risk named by the technical analyst itself, against its own MILDLY_BULLISH stance
+- 1d: sideways, signal neutral, RSI 44 — technical analyst, stance MILDLY_BEARISH, confidence 56%
+- 1h: sideways, signal bearish, RSI 37 — technical analyst, stance MILDLY_BEARISH, confidence 56%
+- Entering on expiry day invites pinning and unwind noise — Prices gravitate toward high open-interest strikes into the close, so intraday levels are unreliable.
 
 **Rebuttals**
 - GST rate changes, sector-specific levies and Union Budget measures can reset margins in a single announcement — Raised directly against the opposing case from analyst findings
 
 **Conceded**
-- The fundamentals analyst reads BULLISH (RELIANCE: At 21.2x trailing earnings versus a peer median of 30.6x, RELIANCE trades at a material discount (-30.4%). Business quality reads )
 - The news_macro analyst reads MILDLY_BULLISH (Macro backdrop for RELIANCE (Energy): range-bound / mixed — no single dominant cross-asset driver. FII net buy Rs 1,240 cr; DII net buy Rs 8)
-- The technical analyst reads MILDLY_BULLISH (RELIANCE at Rs 2,366.99 is in a uptrend on the 1d timeframe with RSI at 59 and Supertrend at 2,254.62 pointing long. Timeframes disagree (1d)
 
 
 ## Analyst reports
 
 **Fundamentals Analyst - RELIANCE.NS**  
-Stance: `BULLISH` | Confidence: 65%
+Stance: `NEUTRAL` | Confidence: 41%
 
-RELIANCE: At 21.2x trailing earnings versus a peer median of 30.6x, RELIANCE trades at a material discount (-30.4%). Business quality reads as ROCE 24.7%, D/E 0.75x, OCF/PAT 1.21x. Fundamental stance: BULLISH.
+RELIANCE: At 28.8x trailing earnings versus a peer median of 18.9x, RELIANCE trades at a steep premium (+52.6%). Business quality reads as ROCE 18.1%, D/E 0.16x, OCF/PAT 1.02x. Fundamental stance: NEUTRAL.
 
 **Key points**
-- P/E 21.2x, P/B 3.9x
-- ROCE 24.7%, ROE 20.6%
-- Debt/Equity 0.75x
-- Cash conversion OCF/PAT 1.21x
-- 3-year sales CAGR 12.8%, profit CAGR 12.2%
-- Latest quarter Q2 FY26: revenue +2.3% YoY
+- P/E 28.8x, P/B 2.6x
+- ROCE 18.1%, ROE 18.4%
+- Debt/Equity 0.16x
+- Cash conversion OCF/PAT 1.02x
+- 3-year sales CAGR 7.1%, profit CAGR 4.7%
+- Latest quarter Q2 FY26: revenue -0.5% YoY
 
 **Risks**
 - GST rate changes, sector-specific levies and Union Budget measures can reset margins in a single announcement
 
 
 **Sentiment Analyst - RELIANCE.NS**  
-Stance: `NEUTRAL` | Confidence: 35%
+Stance: `NEUTRAL` | Confidence: 39%
 
-Sentiment on RELIANCE is broadly neutral (+0.01) with frenzied chatter across 3 company headlines.
+Sentiment on RELIANCE is broadly neutral (-0.10) with elevated chatter across 3 company headlines.
 
 **Key points**
-- Aggregate sentiment +0.01 on a [-1, 1] scale, buzz level frenzied
-- Indian financial press: -0.11 across 22 items
-- StockTwits: +0.13 across 51 items
-- Reddit r/IndiaInvestments: +0.32 across 9 items
+- Aggregate sentiment -0.10 on a [-1, 1] scale, buzz level elevated
+- Indian financial press: -0.19 across 12 items
+- StockTwits: +0.07 across 57 items
+- Reddit r/IndiaInvestments: -0.06 across 3 items
 
 **Risks**
-- Frenzied chatter: crowded positioning raises reversal risk
 - Sentiment is a coincident indicator: it confirms moves, it does not lead them
 
 
 **News Macro Analyst - RELIANCE.NS**  
 Stance: `MILDLY_BULLISH` | Confidence: 44%
 
-Macro backdrop for RELIANCE (Energy): range-bound / mixed — no single dominant cross-asset driver. FII net buy Rs 1,240 cr; DII net buy Rs 860 cr. Both sides buying - the strongest flow backdrop for a sustained up-move. Session context: CLOSED, 2 sessions to weekly expiry.
+Macro backdrop for RELIANCE (Energy): range-bound / mixed — no single dominant cross-asset driver. FII net buy Rs 1,240 cr; DII net buy Rs 860 cr. Both sides buying - the strongest flow backdrop for a sustained up-move. Session context: CLOSED, 0 sessions to weekly expiry.
 
 **Key points**
 - Macro regime: range-bound / mixed — no single dominant cross-asset driver
@@ -258,21 +199,24 @@ Macro backdrop for RELIANCE (Energy): range-bound / mixed — no single dominant
 - 3 company-specific headlines this week
 
 **Risks**
+- Expiry session: derivative unwinding distorts index and cash prices
 - Budget (1 February) and RBI policy dates can reprice an entire sector in one session
 - Commodity price and import-duty changes flow straight through to margins
 
 
 **Technical Analyst - RELIANCE.NS**  
-Stance: `MILDLY_BULLISH` | Confidence: 59%
+Stance: `MILDLY_BEARISH` | Confidence: 56%
 
-RELIANCE at Rs 2,366.99 is in a uptrend on the 1d timeframe with RSI at 59 and Supertrend at 2,254.62 pointing long. Timeframes disagree (1d bullish, 1h bearish, 15m bullish). Conflicting timeframes argue for reduced size and waiting for the lower timeframe to align with the higher one. Technical stance: MILDLY_BULLISH.
+RELIANCE at Rs 2,813.46 is in a sideways on the 1d timeframe with RSI at 44 and Supertrend at 2,750.72 pointing long. Timeframes disagree (1d neutral, 1h bearish, 15m neutral). Conflicting timeframes argue for reduced size and waiting for the lower timeframe to align with the higher one. Technical stance: MILDLY_BEARISH.
 
 **Key points**
-- 1d: uptrend, signal bullish, RSI 59
-- 1h: downtrend, signal bearish, RSI 36
-- 15m: sideways, signal bullish, RSI 70
-- 60-session relative strength vs Nifty: +0.0 percentage points
-- Expiry week (2 sessions out): expect pinning and unreliable intraday trends
+- 1d: sideways, signal neutral, RSI 44
+- 1h: sideways, signal bearish, RSI 37
+- 15m: sideways, signal neutral, RSI 44
+- 60-session relative strength vs Nifty: +28.2 percentage points
+- Bullish EMA stack (20 > 50 > 200)
+- Bollinger squeeze: volatility at the low end of its 6-month range, which typically precedes an expansion move
+- Expiry day: intraday price tends to pin toward high open-interest strikes
 
 **Risks**
 - Timeframes disagree, so any entry is a lower-conviction trade
@@ -282,8 +226,8 @@ RELIANCE at Rs 2,366.99 is in a uptrend on the 1d timeframe with RSI at 59 and S
 
 - Sources retrieved: prices, quote, benchmark, fundamentals, peers, corporate_actions, news, sentiment, macro, flows, microstructure
 - Sources failed: none
-- Data gather time: 0.43s
-- Node timings (ms): analyst.fundamentals 0, analyst.news_macro 0, analyst.sentiment 0, analyst.technical 24, gather 434, memory 0, portfolio_manager 0, research_manager 0, researcher.bear 0, researcher.bull 0, risk_manager 0, trader 9
+- Data gather time: 0.3s
+- Node timings (ms): analyst.fundamentals 0, analyst.news_macro 0, analyst.sentiment 0, analyst.technical 14, gather 300, memory 0, portfolio_manager 0, research_manager 0, researcher.bear 0, researcher.bull 0, risk_manager 0, trader 5
 
 ---
 

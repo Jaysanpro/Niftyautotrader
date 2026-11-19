@@ -17,7 +17,7 @@ from xml.etree import ElementTree
 from tradingagents_in.dataflows.cache import get_cache
 from tradingagents_in.dataflows.http import get_text
 from tradingagents_in.utils.logging import get_logger
-from tradingagents_in.utils.timeutils import IST, now_ist, to_ist, as_of_moment
+from tradingagents_in.utils.timeutils import IST, as_of_moment, now_ist, to_ist
 
 log = get_logger(__name__)
 

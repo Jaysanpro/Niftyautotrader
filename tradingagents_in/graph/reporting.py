@@ -10,12 +10,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from tradingagents_in.llm.provider import resolve_model
 from tradingagents_in.models.enums import Action
 from tradingagents_in.models.research import DebateState
 from tradingagents_in.models.risk import FinalDecision, PortfolioDecision, RiskAssessment
 from tradingagents_in.models.state import ANALYST_STATE_KEYS
 from tradingagents_in.models.trade import TradeProposal
-from tradingagents_in.llm.provider import resolve_model
 from tradingagents_in.utils.formatting import bullet_list, inr_plain
 from tradingagents_in.utils.timeutils import fmt_ist, now_ist
 

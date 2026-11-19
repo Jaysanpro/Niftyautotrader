@@ -19,8 +19,7 @@ from tradingagents_in.dataflows.cache import get_cache
 from tradingagents_in.dataflows.http import nse_api
 from tradingagents_in.models.base import SymbolRef
 from tradingagents_in.utils.logging import get_logger
-from tradingagents_in.utils.timeutils import as_of_date
-from tradingagents_in.utils.timeutils import parse_date
+from tradingagents_in.utils.timeutils import as_of_date, parse_date
 
 log = get_logger(__name__)
 

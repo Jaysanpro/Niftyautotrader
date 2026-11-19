@@ -32,7 +32,6 @@ from tradingagents_in.models.enums import (
 )
 from tradingagents_in.models.trade import CostEstimate, EntryZone, Target, TradeProposal
 
-
 DECIDED = date(2026, 3, 16)
 
 

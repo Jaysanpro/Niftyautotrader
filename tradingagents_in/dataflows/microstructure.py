@@ -8,7 +8,6 @@ machine-checkable terms rather than prose.
 
 from __future__ import annotations
 
-from datetime import date
 from typing import Any
 
 import pandas as pd

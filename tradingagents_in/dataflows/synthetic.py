@@ -37,7 +37,7 @@ from tradingagents_in.models.analyst import (
     PeerMetric,
     SentimentSource,
 )
-from tradingagents_in.utils.timeutils import IST, now_ist, as_of_moment
+from tradingagents_in.utils.timeutils import IST, as_of_moment, now_ist
 
 # A tape with a mild uptrend and 24% annualised vol - an ordinary Nifty
 # large-cap, neither a bubble nor a falling knife.

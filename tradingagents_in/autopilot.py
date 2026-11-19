@@ -22,7 +22,6 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
 
-from tradingagents_in.models.enums import ProductType
 from tradingagents_in.paper import Order, PaperBroker, orders_for_decision
 from tradingagents_in.screen import screen
 from tradingagents_in.utils.logging import get_logger
@@ -203,10 +202,14 @@ def render(result: PassResult, broker: PaperBroker) -> str:
                 f"{p.average_price:>11,.2f}{last:>11,.2f}{p.unrealised_pnl_inr:>12,.2f}"
             )
     if broker.trades:
+        # Computed outside the f-string: nesting the same quote inside one is
+        # 3.12 syntax, and this project supports 3.11.
+        hit = book["hit_rate"]
+        hit_text = "n/a" if hit is None else f"{hit * 100:.0f}%"
         lines.append("")
         lines.append(
             f"closed {book['closed_trades']} trade(s) · "
-            f"hit rate {('n/a' if book['hit_rate'] is None else f'{book['hit_rate'] * 100:.0f}%')} · "
+            f"hit rate {hit_text} · "
             f"net Rs {book['net_pnl_inr']:,.2f} after Rs {book['charges_inr']:,.2f} charges"
         )
     for symbol, why in list(result.skipped.items())[:6]:

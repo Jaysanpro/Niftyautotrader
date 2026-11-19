@@ -12,8 +12,8 @@ once and every analyst reads from the resulting bundle. That gives:
 from __future__ import annotations
 
 import time
-from datetime import date
 from dataclasses import dataclass, field
+from datetime import date
 from typing import Any
 
 import pandas as pd

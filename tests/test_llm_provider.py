@@ -22,7 +22,6 @@ from tradingagents_in.llm.provider import (
     build_chat_model,
 )
 
-
 # ------------------------------------------------------- the rule itself
 
 
