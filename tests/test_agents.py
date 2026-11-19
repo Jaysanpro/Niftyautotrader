@@ -195,16 +195,34 @@ class TestTrader:
 
 
 class TestRiskAndPortfolio:
-    def _proposed(self, bundle, config) -> dict:
+    def _proposed(self, bundle, config, *, clean: bool = False) -> dict:
         state = bullish_state(bundle, config)
         state["portfolio"] = PortfolioSnapshot(
             capital_inr=config["capital_inr"], cash_inr=config["capital_inr"]
         )
-        state["trade_proposal"] = Trader(config).run(bundle, state)
+        proposal = Trader(config).run(bundle, state)
+
+        if clean:
+            # These tests are about the risk manager, not about whatever the
+            # synthetic tape happens to throw up. Left to the tape, the setup's
+            # reward-risk drifts with the generator and a test named "a clean
+            # proposal is approved" ends up asserting that a marginal one is -
+            # which is the risk engine doing its job, read as a failure.
+            # So the targets are pushed out to 3R, well clear of the minimum
+            # even after Indian round-trip charges.
+            entry = proposal.entry_zone.high if proposal.entry_zone else None
+            if entry and proposal.stop_loss:
+                risk = abs(entry - proposal.stop_loss)
+                far = entry + 3 * risk if proposal.action == Action.BUY \
+                    else entry - 3 * risk
+                for target in proposal.targets:
+                    target.price = round(far, 2)
+
+        state["trade_proposal"] = proposal
         return state
 
     def test_clean_proposal_is_approved(self, bundle, config):
-        state = self._proposed(bundle, config)
+        state = self._proposed(bundle, config, clean=True)
         assessment = RiskManager(config).run(bundle, state)
         assert assessment.verdict in (
             RiskVerdict.APPROVE, RiskVerdict.APPROVE_WITH_CHANGES
