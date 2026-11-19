@@ -397,7 +397,16 @@ def check_position_risk(
         )
 
     deployed = proposal.capital_deployed_inr or 0.0
-    if deployed > portfolio.cash_inr > 0 and proposal.product_type == ProductType.CNC:
+    # capital_inr, not cash_inr, decides whether this book is worth checking.
+    # cash_inr defaults to 0.0, which means both "fully invested" and "nobody
+    # said" - and gating on `cash_inr > 0` switched the check off at exactly
+    # the point it matters, letting a fully committed book keep approving
+    # delivery trades it cannot pay for.
+    if (
+        proposal.product_type == ProductType.CNC
+        and portfolio.capital_inr > 0
+        and deployed > portfolio.cash_inr
+    ):
         out.append(
             RuleBreach(
                 rule="insufficient_cash",

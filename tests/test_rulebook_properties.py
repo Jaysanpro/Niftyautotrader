@@ -236,3 +236,69 @@ def test_a_smaller_book_never_takes_more_risk():
     ).analyse("RELIANCE.NS", save=False)
 
     assert small.capital_at_risk_inr <= big.capital_at_risk_inr + EPS
+
+
+# ------------------------------------------------------- delivery cash check
+
+
+def _cnc_proposal(deployed: float):
+    from tradingagents_in.models.enums import AgentRole
+    from tradingagents_in.models.trade import EntryZone, TradeProposal
+
+    return TradeProposal(
+        role=AgentRole.TRADER, symbol="X.NS", summary="s",
+        action=Action.BUY, instrument=Instrument.CASH,
+        product_type=ProductType.CNC,
+        entry_zone=EntryZone(low=100.0, high=101.0), stop_loss=95.0,
+        quantity=1000, capital_deployed_inr=deployed, risk_amount_inr=5_000.0,
+    )
+
+
+@pytest.mark.parametrize("cash", [99_999.0, 50_000.0, 0.0])
+def test_delivery_beyond_free_cash_is_always_blocked(cash):
+    """Including at zero cash, where the check used to switch itself off.
+
+    Delivery is paid in full upfront. A book with no cash left cannot buy
+    more of it, and the fully-committed case is exactly when an unchecked
+    approval does the most damage.
+    """
+    from tradingagents_in.dataflows.synthetic import build_synthetic_bundle
+    from tradingagents_in.models.risk import PortfolioSnapshot
+    from tradingagents_in.risk.rules import check_position_risk
+
+    config = _cfg()
+    bundle = build_synthetic_bundle("ONGC.NS", config)
+    book = PortfolioSnapshot(
+        capital_inr=1_000_000.0, cash_inr=cash, deployed_inr=1_000_000.0 - cash
+    )
+    breaches = check_position_risk(_cnc_proposal(100_000.0), bundle, book, config)
+    assert "insufficient_cash" in [b.rule for b in breaches], (
+        f"deploying Rs 100,000 of delivery against Rs {cash:,.0f} free cash "
+        "was not flagged"
+    )
+
+
+def test_delivery_within_free_cash_is_allowed():
+    from tradingagents_in.dataflows.synthetic import build_synthetic_bundle
+    from tradingagents_in.models.risk import PortfolioSnapshot
+    from tradingagents_in.risk.rules import check_position_risk
+
+    config = _cfg()
+    bundle = build_synthetic_bundle("ONGC.NS", config)
+    book = PortfolioSnapshot(capital_inr=1_000_000.0, cash_inr=500_000.0)
+    breaches = check_position_risk(_cnc_proposal(100_000.0), bundle, book, config)
+    assert "insufficient_cash" not in [b.rule for b in breaches]
+
+
+def test_a_book_that_never_stated_its_capital_is_not_cash_checked():
+    """cash_inr defaults to 0.0, which must not read as 'broke'."""
+    from tradingagents_in.dataflows.synthetic import build_synthetic_bundle
+    from tradingagents_in.models.risk import PortfolioSnapshot
+    from tradingagents_in.risk.rules import check_position_risk
+
+    config = _cfg()
+    bundle = build_synthetic_bundle("ONGC.NS", config)
+    breaches = check_position_risk(
+        _cnc_proposal(100_000.0), bundle, PortfolioSnapshot(), config
+    )
+    assert "insufficient_cash" not in [b.rule for b in breaches]

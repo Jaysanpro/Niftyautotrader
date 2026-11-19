@@ -128,6 +128,32 @@ def build_parser() -> argparse.ArgumentParser:
     )
     add_common(p_back)
 
+    p_screen = sub.add_parser(
+        "screen", help="Rank a sector or index and pick what the book can hold"
+    )
+    p_screen.add_argument(
+        "universe",
+        help="An index (NIFTY50, BANKNIFTY, NIFTYIT, NIFTYPHARMA), a sector "
+             "(Energy, Financials, ...), or a comma-separated symbol list",
+    )
+    p_screen.add_argument(
+        "--rank-by", default="reward_risk",
+        choices=["reward_risk", "conviction", "confidence", "size"],
+        help="What to rank on (default reward_risk: trade quality net of charges)",
+    )
+    p_screen.add_argument(
+        "--shortlist", type=int, default=None,
+        help="How many of the best names go through the portfolio pass "
+             "(default: max_open_positions)",
+    )
+    p_screen.add_argument(
+        "--no-portfolio", action="store_true",
+        help="Rank only. Skips the second pass, so sizes are standalone and "
+             "will not all fit one book",
+    )
+    p_screen.add_argument("--limit", type=int, default=20, help="Rows to print")
+    add_common(p_screen)
+
     sub.add_parser("session", help="Market session status (IST) and expiry calendar")
     sub.add_parser("providers", help="LLM providers with credentials present")
     sub.add_parser("graph", help="Print the agent topology as a Mermaid diagram")
@@ -293,6 +319,40 @@ def cmd_backtest(args: argparse.Namespace) -> int:
             _print(f"... and {len(result.taken) - 25} more")
     _print()
     _print("Past decisions scored on past prices. Not a forecast, and not advice.")
+    return 0
+
+
+def cmd_screen(args: argparse.Namespace) -> int:
+    from tradingagents_in.graph.runner import IndianTradingAgents
+    from tradingagents_in.screen import render, screen
+
+    config = build_config(overrides_from_args(args))
+    app = IndianTradingAgents(config=config, use_langgraph=not args.sequential)
+    _banner(config, app.backend, quiet=args.json)
+
+    try:
+        result = screen(
+            app, args.universe,
+            as_of=getattr(args, "as_of", None),
+            rank_by=args.rank_by,
+            shortlist=args.shortlist,
+            apply_portfolio=not args.no_portfolio,
+        )
+    except ValueError as exc:
+        _print(f"[red]{exc}[/red]")
+        return 2
+
+    if args.json:
+        payload = result.summary()
+        payload["candidates"] = [vars(c) for c in result.candidates]
+        print(json.dumps(payload, indent=2, default=str))
+        return 0
+
+    _rule("screen")
+    _print(render(result, limit=args.limit))
+    _print()
+    _print("Research output, not investment advice. Verify against the exchange "
+           "and consult a SEBI-registered adviser.")
     return 0
 
 
@@ -563,6 +623,7 @@ def main(argv: list[str] | None = None) -> int:
     handlers = {
         "analyse": cmd_analyse, "analyze": cmd_analyse, "run": cmd_analyse,
         "backtest": cmd_backtest,
+        "screen": cmd_screen,
         "batch": cmd_batch,
         "session": cmd_session,
         "providers": cmd_providers,

@@ -46,11 +46,18 @@ DEFAULT_ANNUAL_VOL = 0.24
 
 
 def _rng(symbol: str, seed: int | None) -> np.random.Generator:
-    """Per-symbol deterministic generator, so TCS and INFY differ but repeat."""
+    """Per-symbol deterministic generator, so TCS and INFY differ but repeat.
+
+    A configured seed is *mixed with* the symbol rather than replacing it.
+    Replacing it gave every symbol in a seeded run the identical tape, which
+    quietly turns any multi-symbol test into one symbol repeated: a screen
+    could not rank, and a portfolio sweep was eight copies of one series.
+    """
+    digest = hashlib.sha256(symbol.encode()).hexdigest()[:8]
+    symbol_seed = int(digest, 16)
     if seed is None:
-        digest = hashlib.sha256(symbol.encode()).hexdigest()[:8]
-        seed = int(digest, 16)
-    return np.random.default_rng(seed)
+        return np.random.default_rng(symbol_seed)
+    return np.random.default_rng([seed, symbol_seed])
 
 
 def synthetic_ohlcv(
