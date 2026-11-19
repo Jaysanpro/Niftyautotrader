@@ -154,6 +154,34 @@ def build_parser() -> argparse.ArgumentParser:
     p_screen.add_argument("--limit", type=int, default=20, help="Rows to print")
     add_common(p_screen)
 
+    p_auto = sub.add_parser(
+        "autopilot",
+        help="One autonomous pass: screen, place, manage a paper book",
+    )
+    p_auto.add_argument("universe", help="Index, sector, or comma-separated symbols")
+    p_auto.add_argument(
+        "--book", default="paper_book.json",
+        help="Where the paper book lives between passes (default paper_book.json)",
+    )
+    p_auto.add_argument(
+        "--max-new", type=int, default=3,
+        help="Most new positions this pass may open (default 3). Bounds the "
+             "rate of risk-taking; the portfolio caps bound the book",
+    )
+    p_auto.add_argument(
+        "--square-off", action="store_true",
+        help="Close intraday positions, as a broker does near the close",
+    )
+    p_auto.add_argument(
+        "--rank-by", default="reward_risk",
+        choices=["reward_risk", "conviction", "confidence", "size"],
+    )
+    p_auto.add_argument(
+        "--slippage-bps", type=float, default=5.0,
+        help="Market and stop fills go against you by this much (default 5)",
+    )
+    add_common(p_auto)
+
     sub.add_parser("session", help="Market session status (IST) and expiry calendar")
     sub.add_parser("providers", help="LLM providers with credentials present")
     sub.add_parser("graph", help="Print the agent topology as a Mermaid diagram")
@@ -353,6 +381,67 @@ def cmd_screen(args: argparse.Namespace) -> int:
     _print()
     _print("Research output, not investment advice. Verify against the exchange "
            "and consult a SEBI-registered adviser.")
+    return 0
+
+
+def cmd_autopilot(args: argparse.Namespace) -> int:
+    from pathlib import Path
+
+    from tradingagents_in.autopilot import render, run_pass
+    from tradingagents_in.graph.runner import IndianTradingAgents
+    from tradingagents_in.paper import PaperBroker
+
+    config = build_config(overrides_from_args(args))
+    app = IndianTradingAgents(config=config, use_langgraph=not args.sequential)
+    _banner(config, app.backend, quiet=args.json)
+
+    book_path = Path(args.book)
+    if book_path.exists():
+        broker = PaperBroker.load(book_path, config=config)
+    else:
+        broker = PaperBroker(
+            starting_cash_inr=float(config["capital_inr"]),
+            config=config,
+            slippage_bps=args.slippage_bps,
+            state_path=book_path,
+        )
+    broker.state_path = book_path
+
+    # Mark everything held against the desk's current reference price, so
+    # stops are judged on this pass rather than on a stale fill price.
+    prices: dict[str, float] = {}
+    for position in broker.positions():
+        try:
+            decision = app.analyse(
+                position.symbol, as_of=getattr(args, "as_of", None), save=False
+            )
+            zone = getattr(decision.proposal, "entry_zone", None)
+            if zone:
+                prices[position.symbol] = round((zone.low + zone.high) / 2, 2)
+        except Exception as exc:  # noqa: BLE001 - a stale mark beats no pass
+            _print(f"[yellow]could not re-price {position.symbol}: {exc}[/yellow]")
+
+    result = run_pass(
+        app, broker, args.universe,
+        as_of=getattr(args, "as_of", None),
+        prices=prices or None,
+        max_new_positions=args.max_new,
+        square_off=args.square_off,
+        rank_by=args.rank_by,
+    )
+    broker.save(book_path)
+
+    if args.json:
+        payload = result.summary()
+        payload["book"] = broker.to_dict()
+        print(json.dumps(payload, indent=2, default=str))
+        return 0
+
+    _rule("autopilot")
+    _print(render(result, broker))
+    _print()
+    _print(f"Paper book saved to {book_path}. Simulated orders only - nothing "
+           "was sent to a broker.")
     return 0
 
 
@@ -624,6 +713,7 @@ def main(argv: list[str] | None = None) -> int:
         "analyse": cmd_analyse, "analyze": cmd_analyse, "run": cmd_analyse,
         "backtest": cmd_backtest,
         "screen": cmd_screen,
+        "autopilot": cmd_autopilot,
         "batch": cmd_batch,
         "session": cmd_session,
         "providers": cmd_providers,
