@@ -80,13 +80,52 @@ real money at your provider, and `--max-instances` is the only thing bounding
 how fast. And the output stops being deterministic, so a decision you see is
 no longer reproducible from the inputs alone.
 
+## Railway
+
+`railway.json` is already in the repo and points the builder at
+`Dockerfile.web`, so there is nothing to write:
+
+1. railway.com: New Project, Deploy from GitHub, pick this repo.
+2. Variables:
+
+   ```
+   ITA_LLM_PROVIDER=offline
+   ITA_DATA_PROVIDER=synthetic
+   ITA_ONLINE_TOOLS=false
+   ITA_WEB_CONCURRENCY=6
+   TZ=Asia/Kolkata
+   ```
+
+   Railway has no field for these in `railway.json`; they are set in the
+   dashboard or with `railway variables`.
+3. Settings, Networking, Generate Domain.
+
+`$PORT` is injected and the image already binds it. The health check is
+`/healthz`, which answers without building a runner or touching the network.
+
+### Why concurrency 6 here and 2 on Cloud Run
+
+They are limited by different things. Cloud Run is told `--concurrency=2` to
+match the app's own semaphore so that load starts another instance instead of
+returning 503. Railway serves from one instance, so the semaphore is the only
+limiter and a low value would just 503 under light use.
+
+Memory does not argue against raising it. Measured on this image: 103 MiB
+idle, 135 MiB after one warm request, **141 MiB with six concurrent
+analyses** - the runner cache is shared per (capital, profile), so extra
+concurrency costs a few MiB rather than a multiple. The binding constraint is
+CPU: each analysis is ~0.6s of it, so six at once on a small instance queue
+rather than fail.
+
 ## The Vercel dashboard
 
 `frontend/` is a static dashboard for the same API: no build step, no
 framework, so it deploys as files and there is no toolchain to break.
 
-1. Put the Cloud Run URL into `frontend/vercel.json`, replacing
-   `REPLACE-ME.a.run.app` in the rewrite.
+1. Put the backend's URL into `frontend/vercel.json`, replacing
+   `REPLACE-ME.a.run.app` in the rewrite. Either host works - a Cloud Run
+   `*.a.run.app` or a Railway `*.up.railway.app` - since the rewrite only
+   needs somewhere to forward `/api` to.
 2. On vercel.com: New Project, import this repo, set **Root Directory** to
    `frontend`, framework preset **Other**. No build command.
 

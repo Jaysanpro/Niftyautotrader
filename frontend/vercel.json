@@ -3,7 +3,8 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://REPLACE-ME.a.run.app/api/:path*"
+      "destination": "https://REPLACE-ME.a.run.app/api/:path*",
+      "//": "Point this at the backend: a Cloud Run *.a.run.app host or a Railway *.up.railway.app one. Proxying through this domain keeps the browser same-origin, so no CORS is needed."
     }
   ],
   "headers": [
