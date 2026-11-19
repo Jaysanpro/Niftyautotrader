@@ -136,6 +136,14 @@ def make_debater_node(side: str, config: dict[str, Any]) -> NodeFn:
             )
             turn = agent.run(_bundle(state), state)
             turns = [*debate.turns, turn]
+            # Every other agent narrates itself; these two did not, so the
+            # debate - the part of the run worth watching - passed in silence
+            # in the CLI trace and in anything reading the log.
+            log.info(
+                "%s: round %d, %d point(s), %d rebuttal(s)%s",
+                side, turn.round_number, len(turn.points), len(turn.rebuttals),
+                f", conceded {len(turn.conceded)}" if turn.conceded else "",
+            )
             # The round closes when the bear has answered the bull.
             rounds = debate.rounds_completed + (1 if side == "bear" else 0)
             return {

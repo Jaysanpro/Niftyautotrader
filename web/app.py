@@ -14,6 +14,7 @@ still answers, deterministically, instead of erroring on the first request.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import threading
@@ -21,12 +22,13 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from tradingagents_in.config.default_config import build_config
 from tradingagents_in.graph.runner import IndianTradingAgents
 from tradingagents_in.utils.timeutils import parse_date
+from web.runs import registry
 
 # NSE/BSE tickers, optionally with the Yahoo suffix the dataflows expect.
 _SYMBOL_RE = re.compile(r"^[A-Za-z0-9&._-]{1,24}$")
@@ -149,6 +151,214 @@ def analyse(req: AnalyseRequest) -> JSONResponse:
         _slots.release()
 
     return JSONResponse(payload)
+
+
+# --------------------------------------------------------------- the console
+
+
+@app.get("/api/team")
+def team() -> dict[str, Any]:
+    """The desk roster, and which model each seat runs on."""
+    cfg = build_config()
+    from tradingagents_in.llm.provider import resolve_model
+
+    def model_for(tier: str) -> str:
+        try:
+            return resolve_model(cfg, tier) or "deterministic"
+        except Exception:  # noqa: BLE001
+            return "deterministic"
+
+    offline = str(cfg.get("llm_provider", "")).lower() == "offline"
+    selected = set(cfg.get("selected_analysts") or [])
+    roster = []
+    for role, tier in (cfg.get("agent_model_tier") or {}).items():
+        short = role.replace("_analyst", "").replace("_researcher", "")
+        roster.append({
+            "role": role,
+            "name": short.replace("_", " "),
+            "tier": tier,
+            "model": "deterministic" if offline else model_for(tier),
+            # An analyst the config switched off is shown greyed, not hidden:
+            # a missing seat is worth seeing.
+            "active": short in selected or not role.endswith("_analyst"),
+        })
+    return {"offline": offline, "provider": cfg.get("llm_provider"), "agents": roster}
+
+
+@app.get("/api/systems")
+def systems() -> dict[str, Any]:
+    """Data sources, and whether this deployment can actually reach them."""
+    cfg = build_config()
+    online = bool(cfg.get("online_tools"))
+    provider = str(cfg.get("data_provider", "")).lower()
+    synthetic = provider == "synthetic"
+
+    def state(needs_network: bool) -> str:
+        if synthetic:
+            return "sim"
+        return "up" if (online or not needs_network) else "off"
+
+    sources = [
+        ("prices", provider or "yfinance", True),
+        ("fundamentals", "screener + yfinance", True),
+        ("news", "rss", True),
+        ("sentiment", "social", True),
+        ("macro", "rbi / fii-dii", True),
+        ("microstructure", "nse", True),
+        ("corp actions", "nse", True),
+        ("calendar", "nse holidays", False),
+        ("f&o", "lot sizes / expiry", False),
+        ("risk rules", "deterministic", False),
+        ("costs", "stt / stamp / gst", False),
+        ("memory", "decision log", False),
+    ]
+    return {
+        "online": online,
+        "data_provider": provider,
+        "sources": [
+            {"name": n, "detail": d, "state": state(net)} for n, d, net in sources
+        ],
+    }
+
+
+class RunRequest(AnalyseRequest):
+    pass
+
+
+@app.post("/api/runs")
+def start_run(req: RunRequest) -> dict[str, Any]:
+    """Start an analysis and return a handle to watch it."""
+    symbol = req.symbol.strip().upper()
+    if not _SYMBOL_RE.match(symbol):
+        raise HTTPException(status_code=422, detail=f"Not a usable symbol: {symbol!r}")
+    as_of = (req.as_of or "").strip() or None
+    if as_of is not None:
+        try:
+            parse_date(as_of)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="as_of must be YYYY-MM-DD") from None
+
+    if not _slots.acquire(blocking=False):
+        raise HTTPException(status_code=503, detail="All analysis slots are busy.")
+
+    run = registry.create(symbol)
+
+    def work() -> dict[str, Any]:
+        runner = _runner(req.capital_inr, req.profile)
+        decision = runner.analyse(symbol, save=False, as_of=as_of)
+        payload = decision.model_dump(mode="json")
+        payload["summary_markdown"] = runner.summary(decision)
+        return payload
+
+    def body() -> None:
+        try:
+            registry.execute(run, work)
+        finally:
+            _slots.release()
+
+    threading.Thread(target=body, name=f"run-{run.run_id}", daemon=True).start()
+    return {"run_id": run.run_id, "symbol": symbol, "status": run.status}
+
+
+@app.get("/api/runs/{run_id}")
+def run_state(run_id: str) -> dict[str, Any]:
+    run = registry.get(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="No such run.")
+    return {
+        "run_id": run.run_id, "symbol": run.symbol, "status": run.status,
+        "error": run.error, "decision": run.decision, "events": run.events,
+    }
+
+
+@app.get("/api/runs/{run_id}/stream")
+def stream_run(run_id: str) -> StreamingResponse:
+    """Server-sent events: the desk narrating itself, then the decision."""
+    run = registry.get(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="No such run.")
+
+    def events():
+        # Replay what already happened, so a late subscriber sees the whole run.
+        seen = 0
+        for event in list(run.events):
+            seen += 1
+            yield f"data: {json.dumps(event, default=str)}\n\n"
+        if run.finished_at and seen >= len(run.events):
+            yield "data: {\"type\": \"status\", \"done\": true}\n\n"
+            return
+        while True:
+            try:
+                event = run.queue.get(timeout=20)
+            except Exception:  # noqa: BLE001 - timeout: keep the connection warm
+                yield ": keep-alive\n\n"
+                if run.finished_at:
+                    return
+                continue
+            yield f"data: {json.dumps(event, default=str)}\n\n"
+            if event.get("done"):
+                return
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            # Without this an intermediary may buffer the stream into silence.
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@app.post("/api/screen")
+def screen_universe(payload: dict[str, Any]) -> JSONResponse:
+    """Rank a universe. The console's other way in: no symbol required."""
+    from tradingagents_in.screen import render as render_screen
+    from tradingagents_in.screen import screen as run_screen
+
+    universe = str(payload.get("universe", "")).strip()
+    rank_by = str(payload.get("rank_by", "reward_risk"))
+    if not _slots.acquire(blocking=False):
+        raise HTTPException(status_code=503, detail="All analysis slots are busy.")
+    try:
+        runner = _runner(
+            float(payload.get("capital_inr", 1_000_000.0)),
+            str(payload.get("profile", "retail")),
+        )
+        result = run_screen(runner, universe, rank_by=rank_by)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"Screen failed: {exc}") from exc
+    finally:
+        _slots.release()
+
+    out = result.summary()
+    out["candidates"] = [vars(c) for c in result.candidates]
+    out["text"] = render_screen(result, limit=40)
+    return JSONResponse(out)
+
+
+@app.get("/api/session")
+def session_state() -> dict[str, Any]:
+    """Where the market is in its day - the console's clock."""
+    from tradingagents_in.dataflows.calendar_in import session_context
+    from tradingagents_in.utils.timeutils import as_of_moment
+
+    cfg = build_config()
+    ctx = session_context(when=as_of_moment(cfg))
+    return {
+        "phase": ctx.phase.value,
+        "now_ist": ctx.now.strftime("%Y-%m-%d %H:%M"),
+        "trade_date": str(ctx.trade_date),
+        "is_trading_day": ctx.is_trading_day,
+        "minutes_to_close": ctx.minutes_to_close,
+        "weekly_expiry": str(ctx.weekly_expiry),
+        "days_to_weekly_expiry": ctx.days_to_weekly_expiry,
+        "last_trading_day": str(ctx.last_trading_day),
+        "as_of": cfg.get("as_of"),
+    }
 
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
