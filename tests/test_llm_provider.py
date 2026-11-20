@@ -163,3 +163,73 @@ def test_offline_has_no_chat_model():
 def test_an_unknown_provider_is_refused():
     with pytest.raises(LLMUnavailable):
         build_chat_model({"llm_provider": "definitely-not-a-provider"}, "deep")
+
+
+# ------------------------------------------------------- a provider with no key
+
+
+def test_missing_api_key_names_the_variable(monkeypatch):
+    """A provider named without its key is the dangerous configuration.
+
+    The service answers every request - each agent falls back to its
+    deterministic draft, which is the design - so nothing looks broken while
+    no model is ever asked anything. Anything reporting what a deployment is
+    doing has to detect this rather than trust ``llm_provider``.
+    """
+    from tradingagents_in.llm.provider import missing_api_key
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    assert missing_api_key({"llm_provider": "anthropic"}) == "ANTHROPIC_API_KEY"
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-not-real")
+    assert missing_api_key({"llm_provider": "anthropic"}) is None
+
+
+def test_the_offline_engine_needs_no_key(monkeypatch):
+    from tradingagents_in.llm.provider import missing_api_key
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    for provider in ("offline", "none", ""):
+        assert missing_api_key({"llm_provider": provider}) is None
+
+
+def test_an_unknown_provider_reports_no_missing_key():
+    """Unknown providers fail elsewhere, with their own message."""
+    from tradingagents_in.llm.provider import missing_api_key
+
+    assert missing_api_key({"llm_provider": "not-a-provider"}) is None
+
+
+def test_an_unusable_provider_is_reported_once_not_per_call(monkeypatch, caplog):
+    """A missing key is a fact about the configuration, not an event.
+
+    It is true identically for every agent on every run. Warning per call
+    meant ten lines a run and ~640 in one NIFTY50 screen - and since a screen
+    forwards only warnings to the browser, they buried the per-name progress
+    they were streamed alongside.
+    """
+    import logging
+
+    from tradingagents_in.llm import structured
+
+    monkeypatch.setattr(structured, "_REPORTED_UNAVAILABLE", set())
+    with caplog.at_level(logging.WARNING, logger="tradingagents_in.llm.structured"):
+        for _ in range(12):
+            structured._warn_unavailable_once("ANTHROPIC_API_KEY is not set")
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 1, f"expected one warning, got {len(warnings)}"
+
+
+def test_a_different_failure_still_gets_its_own_warning(monkeypatch, caplog):
+    """Silencing repeats must not silence a new problem."""
+    import logging
+
+    from tradingagents_in.llm import structured
+
+    monkeypatch.setattr(structured, "_REPORTED_UNAVAILABLE", set())
+    with caplog.at_level(logging.WARNING, logger="tradingagents_in.llm.structured"):
+        structured._warn_unavailable_once("ANTHROPIC_API_KEY is not set")
+        structured._warn_unavailable_once("ANTHROPIC_API_KEY is not set")
+        structured._warn_unavailable_once("langchain_anthropic is not installed")
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 2

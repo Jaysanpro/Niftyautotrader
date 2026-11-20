@@ -76,6 +76,13 @@ button { cursor: pointer; background: none; border: none; }
 }
 .chip.live { border-color: var(--accent-dim); color: var(--accent); }
 .chip.sim { border-color: #4a3c12; color: var(--warn); }
+/* A misconfiguration, not a mode: louder than .sim, because the deployment
+   looks healthy while no model is being asked anything. */
+.chip.warn {
+  border-color: var(--short);
+  color: var(--short);
+  background: rgba(248, 113, 113, .08);
+}
 
 .counters {
   display: flex; align-items: center; gap: 16px;

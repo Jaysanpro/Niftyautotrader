@@ -16,6 +16,7 @@ LLM's job is to *improve* on a baseline rather than invent from nothing.
 from __future__ import annotations
 
 import json
+import threading
 import time
 from typing import Any, TypeVar
 
@@ -34,6 +35,36 @@ log = get_logger(__name__)
 T = TypeVar("T", bound=BaseModel)
 
 _MODEL_CACHE: dict[tuple[str, str, str], Any] = {}
+
+# Which "no usable model" reasons have already been reported.
+_REPORTED_UNAVAILABLE: set[str] = set()
+_REPORT_LOCK = threading.Lock()
+
+
+def _warn_unavailable_once(reason: str) -> None:
+    """Report an unusable provider once per process, then stay quiet.
+
+    A missing API key is a fact about the configuration, not an event: it is
+    true identically for every agent on every run. Warning per call meant ten
+    lines a run, and about 640 in one NIFTY50 screen - and because a screen
+    forwards only warnings to the browser, those lines buried the per-name
+    progress they were streamed alongside. The first one carries all the
+    information; the rest are noise that hides the signal.
+
+    Keyed on the reason, so a *different* failure still gets its own warning.
+    """
+    with _REPORT_LOCK:
+        first = reason not in _REPORTED_UNAVAILABLE
+        _REPORTED_UNAVAILABLE.add(reason)
+    if first:
+        log.warning(
+            "LLM unavailable (%s); using deterministic output. Every agent "
+            "will fall back for the rest of this process, and this is logged "
+            "once rather than per call.",
+            reason,
+        )
+    else:
+        log.debug("LLM unavailable (%s); using deterministic output", reason)
 
 
 def _get_model(config: dict[str, Any], tier: str) -> Any:
@@ -91,7 +122,7 @@ def call_structured(
     try:
         model = _get_model(config, tier)
     except LLMUnavailable as exc:
-        log.warning("LLM unavailable (%s); using deterministic output", exc)
+        _warn_unavailable_once(str(exc))
         meta.error, meta.fell_back = str(exc), True
         if fallback is None:
             raise

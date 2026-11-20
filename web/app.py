@@ -116,7 +116,15 @@ def healthz() -> dict[str, str]:
 @app.get("/api/config")
 def config_summary() -> dict[str, Any]:
     """What this deployment is actually configured to do."""
+    from tradingagents_in.llm.provider import missing_api_key
+
     cfg = build_config()
+    # A provider named without its key answers every request anyway - each
+    # agent falls back to its deterministic draft. Reporting that as a live
+    # LLM made the console claim reasoning that never happened, so the
+    # deployment counts as deterministic unless the key is actually there.
+    needs_key = missing_api_key(cfg)
+    configured = str(cfg.get("llm_provider", "")).lower()
     return {
         "llm_provider": cfg.get("llm_provider"),
         "data_provider": cfg.get("data_provider"),
@@ -124,7 +132,12 @@ def config_summary() -> dict[str, Any]:
         "profile": cfg.get("profile"),
         "capital_inr": cfg.get("capital_inr"),
         "max_debate_rounds": cfg.get("max_debate_rounds"),
-        "offline": str(cfg.get("llm_provider", "")).lower() == "offline",
+        "offline": configured in ("offline", "none", "") or needs_key is not None,
+        "missing_api_key": needs_key,
+        "llm_note": (
+            f"{cfg.get('llm_provider')} is configured but {needs_key} is not set, "
+            "so every agent is answering from its deterministic draft"
+        ) if needs_key else None,
     }
 
 
@@ -174,7 +187,7 @@ def analyse(req: AnalyseRequest) -> JSONResponse:
 def team() -> dict[str, Any]:
     """The desk roster, and which model each seat runs on."""
     cfg = build_config()
-    from tradingagents_in.llm.provider import resolve_model
+    from tradingagents_in.llm.provider import missing_api_key, resolve_model
 
     def model_for(tier: str) -> str:
         try:
@@ -182,7 +195,12 @@ def team() -> dict[str, Any]:
         except Exception:  # noqa: BLE001
             return "deterministic"
 
-    offline = str(cfg.get("llm_provider", "")).lower() == "offline"
+    # A provider with no key falls back on every call, so every seat really
+    # is running deterministically whatever the config names.
+    needs_key = missing_api_key(cfg)
+    offline = (
+        str(cfg.get("llm_provider", "")).lower() == "offline" or needs_key is not None
+    )
     selected = set(cfg.get("selected_analysts") or [])
     roster = []
     for role, tier in (cfg.get("agent_model_tier") or {}).items():
@@ -196,7 +214,12 @@ def team() -> dict[str, Any]:
             # a missing seat is worth seeing.
             "active": short in selected or not role.endswith("_analyst"),
         })
-    return {"offline": offline, "provider": cfg.get("llm_provider"), "agents": roster}
+    return {
+        "offline": offline,
+        "provider": cfg.get("llm_provider"),
+        "missing_api_key": needs_key,
+        "agents": roster,
+    }
 
 
 @app.get("/api/systems")

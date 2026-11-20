@@ -121,6 +121,24 @@ def provider_is_offline(config: dict[str, Any]) -> bool:
     return str(config.get("llm_provider", "")).lower() in ("offline", "none", "")
 
 
+def missing_api_key(config: dict[str, Any]) -> str | None:
+    """The env var a configured provider needs but does not have, if any.
+
+    A deployment that names a provider and has no key for it still answers
+    every request - each agent falls back to its deterministic draft, which
+    is the design. That makes the misconfiguration invisible: the service
+    looks healthy and the decisions look normal, but no model has been asked
+    anything. So anything reporting what this deployment is doing has to
+    check for the key, not just read ``llm_provider``.
+    """
+    if provider_is_offline(config):
+        return None
+    spec = PROVIDERS.get(str(config.get("llm_provider", "")).lower())
+    if spec is None or not spec.env_key:
+        return None
+    return None if os.environ.get(spec.env_key) else spec.env_key
+
+
 def resolve_model(config: dict[str, Any], tier: str) -> str:
     """Model id for a tier ('deep' or 'quick'), falling back to provider defaults."""
     key = "deep_think_model" if tier == "deep" else "quick_think_model"

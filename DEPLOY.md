@@ -117,6 +117,27 @@ concurrency costs a few MiB rather than a multiple. The binding constraint is
 CPU: each analysis is ~0.6s of it, so six at once on a small instance queue
 rather than fail.
 
+## If the console says ANTHROPIC_API_KEY not set
+
+That chip means the deployment names a provider it has no key for. It is
+worth calling out because **nothing else looks wrong**: every request still
+succeeds, every agent still returns a verdict, and the decisions still read
+normally. They are the deterministic drafts. No model has been asked
+anything.
+
+Set the key where your host keeps environment variables (Railway: the
+project's Variables tab; Cloud Run: `--set-secrets`, as above) and redeploy.
+The chip turns teal and reads `live · anthropic`.
+
+If you would rather not spend anything per request, set
+`ITA_LLM_PROVIDER=offline` instead. That is the same engine, chosen on
+purpose rather than by accident, and the chip says so.
+
+Note that the framework still works either way - the deterministic drafts
+are computed in full before any model is called, and the pure-Python risk
+rulebook outranks whatever a model says. The LLM adds reasoning and
+narration; it does not add the decision.
+
 ## How long a screen takes
 
 Worth knowing before you run one, because the honest answer is "minutes".

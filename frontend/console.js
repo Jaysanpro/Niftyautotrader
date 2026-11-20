@@ -63,9 +63,22 @@ function paintTeam(team) {
   state.agents = team.agents;
   $("team-count").textContent = `${team.agents.length}`;
   $("c-agents").textContent = team.agents.length;
-  $("chip-mode").textContent = team.offline
-    ? "offline engine · deterministic" : `live · ${team.provider}`;
-  $("chip-mode").className = "chip " + (team.offline ? "sim" : "live");
+  // Three states, not two. A provider named without its key is the one worth
+  // calling out: the desk answers normally, so nothing looks wrong, but no
+  // model has been asked anything.
+  if (team.missing_api_key) {
+    $("chip-mode").textContent = `${team.missing_api_key} not set · deterministic`;
+    $("chip-mode").className = "chip warn";
+    $("chip-mode").title =
+      `${team.provider} is configured but ${team.missing_api_key} is not set, `
+      + `so every agent is answering from its deterministic draft. `
+      + `Set it in your host's environment variables to use the model.`;
+  } else {
+    $("chip-mode").textContent = team.offline
+      ? "offline engine · deterministic" : `live · ${team.provider}`;
+    $("chip-mode").className = "chip " + (team.offline ? "sim" : "live");
+    $("chip-mode").title = "";
+  }
 
   const deep = team.agents.find((a) => a.tier === "deep");
   const quick = team.agents.find((a) => a.tier === "quick");
