@@ -27,7 +27,7 @@ you get in production; only the tape and the wording change.
 
 # RELIANCE (RELIANCE.NS) — HOLD [NOT TAKEN]
 
-_2026-11-20 19:15 IST · run `SAMPLE-RELIANCE-01` · offline · 0.4s_
+_2026-11-20 19:52 IST · run `SAMPLE-RELIANCE-01` · offline · 0.4s_
 
 ## Decision
 
@@ -265,8 +265,8 @@ RELIANCE at Rs 2,813.46 is in a sideways on the 1d timeframe with RSI at 44 and 
 
 - Sources retrieved: prices, quote, benchmark, fundamentals, peers, corporate_actions, news, sentiment, macro, flows, microstructure
 - Sources failed: none
-- Data gather time: 0.39s
-- Node timings (ms): analyst.fundamentals 0, analyst.news_macro 0, analyst.sentiment 0, analyst.technical 17, gather 390, memory 0, portfolio_manager 0, research_manager 0, researcher.bear 0, researcher.bull 0, risk_manager 0, trader 6
+- Data gather time: 0.38s
+- Node timings (ms): analyst.fundamentals 0, analyst.news_macro 0, analyst.sentiment 0, analyst.technical 15, gather 382, memory 0, portfolio_manager 0, research_manager 0, researcher.bear 0, researcher.bull 0, risk_manager 0, trader 6
 
 ---
 

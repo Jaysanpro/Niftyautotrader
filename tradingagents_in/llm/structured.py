@@ -47,6 +47,17 @@ _REPORT_LOCK = threading.Lock()
 _CREDENTIALS_REJECTED: dict[str, str] = {}
 
 
+def rejected_credentials(provider: str) -> str | None:
+    """Why this provider's key was rejected in this process, if it was.
+
+    A key that is present but wrong is invisible to a configuration check -
+    the variable is set, so everything reports healthy while every call
+    comes back 401. This is the only place that knows otherwise, so
+    anything describing what the deployment is doing has to ask it.
+    """
+    return _CREDENTIALS_REJECTED.get(str(provider).lower())
+
+
 def _status_of(exc: Exception) -> int | None:
     """HTTP status behind an SDK exception, wherever it hung it."""
     for owner in (exc, getattr(exc, "response", None), getattr(exc, "body", None)):
@@ -103,21 +114,28 @@ def is_retryable(exc: Exception) -> bool:
     return True
 
 
-def _warn_unavailable_once(reason: str) -> None:
+def _warn_unavailable_once(reason: str, key: str | None = None) -> None:
     """Report an unusable provider once per process, then stay quiet.
 
-    A missing API key is a fact about the configuration, not an event: it is
-    true identically for every agent on every run. Warning per call meant ten
-    lines a run, and about 640 in one NIFTY50 screen - and because a screen
-    forwards only warnings to the browser, those lines buried the per-name
-    progress they were streamed alongside. The first one carries all the
-    information; the rest are noise that hides the signal.
+    A missing or rejected key is a fact about the configuration, not an
+    event: it is true identically for every agent on every run. Warning per
+    call meant ten lines a run, and about 640 in one NIFTY50 screen - and
+    because a screen forwards only warnings to the browser, those lines
+    buried the per-name progress they were streamed alongside.
 
-    Keyed on the reason, so a *different* failure still gets its own warning.
+    ``key`` is what makes two reports the same report, and it has to be
+    given separately because the message is not stable: a provider's
+    rejection carries a fresh request_id every time, so keying on the text
+    deduplicates nothing. Four still got through even so, because LangGraph
+    runs the four analysts on parallel threads and they all failed before
+    any of them had recorded it.
+
+    A *different* failure still gets its own warning.
     """
     with _REPORT_LOCK:
-        first = reason not in _REPORTED_UNAVAILABLE
-        _REPORTED_UNAVAILABLE.add(reason)
+        marker = key or reason
+        first = marker not in _REPORTED_UNAVAILABLE
+        _REPORTED_UNAVAILABLE.add(marker)
     if first:
         log.warning(
             "LLM unavailable (%s); using deterministic output. Every agent "
@@ -254,7 +272,7 @@ def call_structured(
                     f"({str(exc).strip()[:160]})"
                 )
                 _CREDENTIALS_REJECTED[provider] = reason
-                _warn_unavailable_once(reason)
+                _warn_unavailable_once(reason, key=f"{provider}:credentials-rejected")
                 break
             if not is_retryable(exc):
                 log.warning("LLM call failed, not retryable: %s", exc)
@@ -295,7 +313,7 @@ def call_text(
         if is_auth_failure(exc):
             reason = f"{provider} rejected the API key ({str(exc).strip()[:160]})"
             _CREDENTIALS_REJECTED[provider] = reason
-            _warn_unavailable_once(reason)
+            _warn_unavailable_once(reason, key=f"{provider}:credentials-rejected")
         else:
             log.warning("text call failed: %s", exc)
         return fallback

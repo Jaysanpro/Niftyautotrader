@@ -362,3 +362,78 @@ def test_a_rejected_key_stops_every_later_call(monkeypatch):
         assert meta.fell_back
 
     assert attempts["n"] == 1, f"expected one doomed call, made {attempts['n']}"
+
+
+def test_one_warning_even_when_the_message_differs_every_time(monkeypatch, caplog):
+    """A provider's rejection carries a fresh request_id on every call.
+
+    Keying the "report once" on the message text therefore deduplicated
+    nothing: four identical-looking warnings reached the browser, each with
+    a different request_id, because each looked like a new reason.
+    """
+    import logging
+
+    from tradingagents_in.llm import structured
+
+    monkeypatch.setattr(structured, "_REPORTED_UNAVAILABLE", set())
+    with caplog.at_level(logging.WARNING, logger="tradingagents_in.llm.structured"):
+        for n in range(10):
+            structured._warn_unavailable_once(
+                f"anthropic rejected the API key (request_id req_{n})",
+                key="anthropic:credentials-rejected",
+            )
+    assert len([r for r in caplog.records if r.levelno == logging.WARNING]) == 1
+
+
+def test_parallel_analysts_do_not_each_report_it(monkeypatch, caplog):
+    """LangGraph runs the four analysts on their own threads.
+
+    They all fail before any of them has recorded the failure, so the
+    check-and-record has to be atomic or the first round still warns once
+    per analyst - which is exactly what showed up in the console.
+    """
+    import logging
+    import threading
+
+    from tradingagents_in.llm import structured
+
+    monkeypatch.setattr(structured, "_REPORTED_UNAVAILABLE", set())
+    start = threading.Barrier(8)
+
+    def race(n: int) -> None:
+        start.wait(5)
+        structured._warn_unavailable_once(
+            f"anthropic rejected the API key (request_id req_{n})",
+            key="anthropic:credentials-rejected",
+        )
+
+    with caplog.at_level(logging.WARNING, logger="tradingagents_in.llm.structured"):
+        threads = [threading.Thread(target=race, args=(n,)) for n in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(10)
+
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 1, f"{len(warnings)} threads each reported it"
+
+
+def test_a_rejected_key_is_visible_to_callers(monkeypatch):
+    """A key that is set but wrong passes every configuration check.
+
+    missing_api_key sees the variable and says all is well, so without this
+    the console reported "live . anthropic" while every call came back 401.
+    """
+    from tradingagents_in.llm import structured
+    from tradingagents_in.llm.provider import missing_api_key
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-wrong-but-present")
+    monkeypatch.setattr(structured, "_CREDENTIALS_REJECTED", {})
+
+    assert missing_api_key({"llm_provider": "anthropic"}) is None
+    assert structured.rejected_credentials("anthropic") is None
+
+    structured._CREDENTIALS_REJECTED["anthropic"] = "anthropic rejected the API key"
+    assert structured.rejected_credentials("anthropic")
+    assert structured.rejected_credentials("ANTHROPIC"), "lookup must be case-insensitive"
+    assert structured.rejected_credentials("openai") is None

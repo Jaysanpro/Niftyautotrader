@@ -197,6 +197,20 @@ Check, in this order:
 3. **The key itself.** Revoked, from another workspace, or an OpenAI key in
    `ANTHROPIC_API_KEY`.
 
+### Testing a key without redeploying
+
+```bash
+curl -s https://api.anthropic.com/v1/messages \
+  -H "x-api-key: $ANTHROPIC_API_KEY" \
+  -H "anthropic-version: 2023-06-01" \
+  -H "content-type: application/json" \
+  -d '{"model":"claude-haiku-5-5","max_tokens":8,
+       "messages":[{"role":"user","content":"hi"}]}'
+```
+
+A reply with `"content"` means the key is good. `authentication_error`
+means it is not, and no amount of redeploying will change that.
+
 A rejected key is latched for the life of the process: the first 401 is
 logged, every later call goes straight to the deterministic draft, and
 nothing is retried. That is deliberate. An invalid key is not a transient

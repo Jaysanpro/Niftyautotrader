@@ -44,6 +44,17 @@ async function get(path) {
   return res.json();
 }
 
+// Re-read the desk's state after a run. A key is only discovered to be
+// wrong when something tries to use it, so the chip painted at load can be
+// out of date the moment the first run finishes.
+async function refreshMode() {
+  try {
+    paintTeam(await get("/team"));
+  } catch {
+    /* the chip keeps whatever it last showed */
+  }
+}
+
 async function boot() {
   renderStage();
   try {
@@ -75,6 +86,14 @@ function paintTeam(team) {
       `${team.provider} is configured but ${team.missing_api_key} is not set, `
       + `so every agent is answering from its deterministic draft. `
       + `Set it in your host's environment variables to use the model.`;
+  } else if (team.rejected_credentials) {
+    // A key that is set but wrong passes every configuration check, so this
+    // is the only place it can surface.
+    $("chip-mode").textContent = "API key rejected · deterministic";
+    $("chip-mode").className = "chip warn";
+    $("chip-mode").title = team.rejected_credentials
+      + ". Every agent is answering from its deterministic draft. Fix the key "
+      + "and redeploy — the rejection is remembered for the life of the process.";
   } else {
     $("chip-mode").textContent = team.offline
       ? "offline engine · deterministic" : `live · ${team.provider}`;
@@ -315,6 +334,7 @@ async function analyse(symbol) {
 
   setRunning(false, state.errors ? "failed" : "idle");
   paintOps();
+  refreshMode();
 }
 
 function summarise(d) {
@@ -406,6 +426,7 @@ async function runScreen(universe) {
 
   hideProgress();
   setRunning(false, state.errors && !state.screen ? "failed" : "idle");
+  refreshMode();
 }
 
 async function runAutopilot(universe) {
@@ -485,6 +506,7 @@ async function runAutopilot(universe) {
 
   hideProgress();
   setRunning(false, state.errors && !state.autopilot ? "failed" : "idle");
+  refreshMode();
 }
 
 function summarisePass(a) {

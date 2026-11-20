@@ -123,14 +123,17 @@ def healthz() -> dict[str, str]:
 def config_summary() -> dict[str, Any]:
     """What this deployment is actually configured to do."""
     from tradingagents_in.llm.provider import missing_api_key
+    from tradingagents_in.llm.structured import rejected_credentials
 
     cfg = build_config()
-    # A provider named without its key answers every request anyway - each
-    # agent falls back to its deterministic draft. Reporting that as a live
-    # LLM made the console claim reasoning that never happened, so the
-    # deployment counts as deterministic unless the key is actually there.
+    # A provider named without a usable key answers every request anyway -
+    # each agent falls back to its deterministic draft. Reporting that as a
+    # live LLM made the console claim reasoning that never happened, so the
+    # deployment counts as deterministic unless the key is there *and* the
+    # provider has not rejected it.
     needs_key = missing_api_key(cfg)
     configured = str(cfg.get("llm_provider", "")).lower()
+    rejected = rejected_credentials(configured)
     return {
         "llm_provider": cfg.get("llm_provider"),
         "data_provider": cfg.get("data_provider"),
@@ -138,12 +141,21 @@ def config_summary() -> dict[str, Any]:
         "profile": cfg.get("profile"),
         "capital_inr": cfg.get("capital_inr"),
         "max_debate_rounds": cfg.get("max_debate_rounds"),
-        "offline": configured in ("offline", "none", "") or needs_key is not None,
+        "offline": (
+            configured in ("offline", "none", "")
+            or needs_key is not None
+            or rejected is not None
+        ),
         "missing_api_key": needs_key,
+        "rejected_credentials": rejected,
         "llm_note": (
             f"{cfg.get('llm_provider')} is configured but {needs_key} is not set, "
             "so every agent is answering from its deterministic draft"
-        ) if needs_key else None,
+        ) if needs_key else (
+            f"{rejected}. Every agent is answering from its deterministic draft. "
+            "Fix the key and redeploy - the rejection is remembered for the life "
+            "of this process."
+        ) if rejected else None,
     }
 
 
@@ -194,6 +206,7 @@ def team() -> dict[str, Any]:
     """The desk roster, and which model each seat runs on."""
     cfg = build_config()
     from tradingagents_in.llm.provider import missing_api_key, resolve_model
+    from tradingagents_in.llm.structured import rejected_credentials
 
     def model_for(tier: str) -> str:
         try:
@@ -204,8 +217,11 @@ def team() -> dict[str, Any]:
     # A provider with no key falls back on every call, so every seat really
     # is running deterministically whatever the config names.
     needs_key = missing_api_key(cfg)
+    rejected = rejected_credentials(str(cfg.get("llm_provider", "")).lower())
     offline = (
-        str(cfg.get("llm_provider", "")).lower() == "offline" or needs_key is not None
+        str(cfg.get("llm_provider", "")).lower() == "offline"
+        or needs_key is not None
+        or rejected is not None
     )
     selected = set(cfg.get("selected_analysts") or [])
     roster = []
@@ -224,6 +240,7 @@ def team() -> dict[str, Any]:
         "offline": offline,
         "provider": cfg.get("llm_provider"),
         "missing_api_key": needs_key,
+        "rejected_credentials": rejected,
         "agents": roster,
     }
 
