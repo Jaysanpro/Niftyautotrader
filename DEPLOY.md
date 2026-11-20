@@ -117,6 +117,48 @@ concurrency costs a few MiB rather than a multiple. The binding constraint is
 CPU: each analysis is ~0.6s of it, so six at once on a small instance queue
 rather than fail.
 
+## Letting it run itself
+
+`autopilot NIFTYIT` in the console, or `POST /api/autopilot`, runs one
+autonomous pass:
+
+1. **Mark.** Every held position is re-priced against the desk's current
+   view, so a resting stop is judged on this pass rather than on a stale
+   fill price. An exit beats an entry.
+2. **Square off**, if the pass was asked to, as a broker does near the close.
+3. **Screen** the universe, both passes, exactly as `screen` does.
+4. **Enter** what the book does not already hold, bounded by
+   `max_new_positions` (default 3) on top of the portfolio caps - those
+   bound the *book*, this bounds the *rate*, so one bad day cannot fill it
+   in a single go.
+
+Each entry goes in as a limit at the band edge with its stop placed at the
+same time. A position without a resting stop is the one outcome that must
+never happen, and there is a test for it.
+
+The **Book** tab shows equity, cash, realised P&L, open positions and
+resting orders. `GET /api/book` is the same data; `DELETE /api/book` starts
+again from flat.
+
+### It is one pass, not a daemon
+
+Deliberately. The saved book *is* the state, so a pass is resumable and
+auditable, and nothing keeps trading because a process was left running.
+To run it on a schedule, call the endpoint from any scheduler you trust and
+give it a market-hours window - the app will not do that on its own.
+
+The book lives at `ITA_PAPER_BOOK` (default `results/paper_book.json`).
+On Railway and Cloud Run that is container-local, so **a redeploy clears
+it**. Mount a volume if you want it to survive.
+
+### Everything here is simulated
+
+`PaperBroker` fills against its own model - slippage on market and stop
+fills, limits at their own price, delivery needing full cash, intraday on
+margin, and the Indian charge stack out of realised P&L. No order leaves
+the process. There is an `ExecutionBroker` protocol that a live Kite
+adapter would implement, and no such adapter exists in this repository.
+
 ## If the console says ANTHROPIC_API_KEY not set
 
 That chip means the deployment names a provider it has no key for. It is

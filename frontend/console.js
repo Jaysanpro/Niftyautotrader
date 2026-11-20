@@ -30,6 +30,8 @@ const state = {
   startedAt: 0,
   decision: null,
   screen: null,
+  book: null,
+  autopilot: null,
   tab: "start",
   timer: null,
 };
@@ -406,6 +408,161 @@ async function runScreen(universe) {
   setRunning(false, state.errors && !state.screen ? "failed" : "idle");
 }
 
+async function runAutopilot(universe) {
+  resetAgents();
+  state.steps = 0; state.errors = 0;
+  $("c-steps").textContent = "0"; $("c-errors").textContent = "0";
+  setRunning(true, "autopilot");
+  say("You", `autopilot ${universe}`, true);
+  const box = openTrace();
+
+  let start;
+  try {
+    const res = await fetch(API + "/autopilot", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        universe,
+        capital_inr: Number($("capital").value) || 1000000,
+        as_of: $("asof").value || null,
+        max_new_positions: 3,
+      }),
+    });
+    start = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(start.detail || `HTTP ${res.status}`);
+  } catch (err) {
+    traceLine(box, null, String(err.message || err), "err");
+    setRunning(false, "failed");
+    say("Desk", "Autopilot did not start.");
+    return;
+  }
+
+  traceLine(box, null, `${universe}: marking what is held, then screening `
+    + `${start.names} names. Simulated orders only — nothing is sent to a broker.`);
+  showProgress(0, start.runs_expected, "starting");
+
+  await new Promise((resolve) => {
+    const es = new EventSource(`${API}/runs/${start.run_id}/stream`);
+    let merit = 0;
+    es.onmessage = (event) => {
+      let e;
+      try { e = JSON.parse(event.data); } catch { return; }
+
+      if (e.type === "progress") {
+        if (e.phase === "mark") {
+          traceLine(box, e.symbol.replace(/\.(NS|BO)$/, ""), "re-pricing what is held");
+          return;
+        }
+        const overall = e.phase === "merit" ? e.completed : merit + e.completed;
+        if (e.phase === "merit") merit = Math.max(merit, e.completed);
+        state.steps = overall;
+        $("c-steps").textContent = overall;
+        showProgress(overall, start.runs_expected, e.phase);
+        if (e.symbol) {
+          const rr = e.reward_risk != null ? ` · R:R ${num(e.reward_risk)}` : "";
+          const mark = e.error ? "failed" : (e.approved ? `${e.action} ✓` : e.action || "—");
+          traceLine(box, e.symbol.replace(/\.(NS|BO)$/, ""), `${mark}${rr}`,
+                    e.error ? "err" : "");
+        }
+      } else if (e.type === "autopilot") {
+        state.autopilot = e.autopilot;
+        state.book = e.autopilot.book;
+        show("book");
+        say("Desk", summarisePass(e.autopilot));
+      } else if (e.type === "log") {
+        traceLine(box, null, e.message, e.level === "error" ? "err" : "warn");
+      } else if (e.type === "error") {
+        state.errors += 1;
+        $("c-errors").textContent = state.errors;
+        traceLine(box, null, e.error, "err");
+        say("Desk", "The pass failed. The trace above says where.");
+      }
+
+      if (e.done === true) { es.close(); resolve(); }
+    };
+    es.onerror = () => { es.close(); resolve(); };
+  });
+
+  hideProgress();
+  setRunning(false, state.errors && !state.autopilot ? "failed" : "idle");
+}
+
+function summarisePass(a) {
+  const bits = [`${a.scanned} scanned`];
+  if (a.orders_placed) bits.push(`${a.orders_placed} orders placed, ${a.orders_filled} filled`);
+  else bits.push("no new orders");
+  const skipped = Object.keys(a.skipped || {}).length;
+  if (skipped) bits.push(`${skipped} skipped`);
+  if (a.squared_off) bits.push(`${a.squared_off} squared off`);
+  return bits.join(" · ") + `. Book is worth ${inr(a.equity_inr)}. Simulated — `
+    + "no order left this process.";
+}
+
+async function refreshBook() {
+  try {
+    const res = await fetch(API + "/book");
+    state.book = await res.json();
+  } catch {
+    state.book = null;
+  }
+  if (state.tab === "book") renderStage();
+}
+
+function bookHtml() {
+  const b = state.book;
+  if (!b) {
+    refreshBook();
+    return `<p class="note">Loading the book…</p>`;
+  }
+  if (!b.exists) {
+    return `<h1 class="start-head">No book yet</h1>
+      <p class="start-sub">${esc(b.note || "")} Try <code>autopilot NIFTYIT</code> —
+      it screens the universe, places the orders the desk would place, and keeps
+      the positions between passes.</p>
+      <p class="disclaimer">Simulated throughout. No order ever leaves this process.</p>`;
+  }
+  const pnl = (b.equity_inr || 0) - (b.starting_cash_inr || 0);
+  const pct = b.starting_cash_inr ? (pnl / b.starting_cash_inr) * 100 : 0;
+  const rows = (b.positions || []).map((p) => `
+    <tr>
+      <td>${esc(p.symbol)}</td>
+      <td>${esc(p.product)}</td>
+      <td class="n">${p.quantity}</td>
+      <td class="n">${num(p.average_price)}</td>
+      <td class="n">${p.last_price != null ? num(p.last_price) : "—"}</td>
+      <td class="n ${p.unrealised_pnl_inr >= 0 ? "up" : "down"}">${num(p.unrealised_pnl_inr)}</td>
+    </tr>`).join("");
+  const orders = (b.open_orders || []).map((o) => `
+    <tr>
+      <td>${esc(o.symbol)}</td>
+      <td>${esc(o.side)}</td>
+      <td>${esc(o.order_type)}</td>
+      <td class="n">${o.quantity}</td>
+      <td class="n">${o.trigger_price != null ? num(o.trigger_price)
+                      : (o.limit_price != null ? num(o.limit_price) : "—")}</td>
+    </tr>`).join("");
+  return `
+    <h1 class="start-head">Paper book <span class="tag warn-tag">simulated</span></h1>
+    <div class="panel"><table class="kv">
+      <tr><td>Equity</td><td>${inr(b.equity_inr)}</td></tr>
+      <tr><td>Cash</td><td>${inr(b.cash_inr)}</td></tr>
+      <tr><td>Realised</td><td>${inr(b.realised_pnl_inr)}</td></tr>
+      <tr><td>Since start</td><td class="${pnl >= 0 ? "up" : "down"}">${
+        inr(pnl)} (${num(pct)}%)</td></tr>
+    </table></div>
+    ${rows ? `<div class="panel"><table class="screen-table">
+      <thead><tr><th>SYMBOL</th><th>PROD</th><th class="n">QTY</th>
+        <th class="n">AVG</th><th class="n">LAST</th><th class="n">P&amp;L</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>`
+      : `<p class="note">Flat — no open positions.</p>`}
+    ${orders ? `<div class="panel"><table class="screen-table">
+      <thead><tr><th>RESTING</th><th>SIDE</th><th>TYPE</th>
+        <th class="n">QTY</th><th class="n">TRIGGER</th></tr></thead>
+      <tbody>${orders}</tbody></table></div>` : ""}
+    <p class="disclaimer">Simulated throughout: no order ever leaves this process,
+      and the book lives on the server's disk, which a redeploy clears.</p>`;
+}
+
 // The bar under the header. Hidden markup rather than a built element, so
 // its styling lives with the rest of the console's.
 function showProgress(done, total, phase) {
@@ -458,6 +615,7 @@ function renderStage() {
   if (state.tab === "start") return void (el.innerHTML = startHtml());
   if (state.tab === "decision") return void (el.innerHTML = decisionHtml());
   if (state.tab === "screen") return void (el.innerHTML = screenHtml());
+  if (state.tab === "book") return void (el.innerHTML = bookHtml());
   el.innerHTML = deskHtml();
 }
 
@@ -466,6 +624,7 @@ function startHtml() {
     ["Analyse one name", "RELIANCE.NS — four analysts, a bull/bear debate, then risk and the book.", "ask:RELIANCE.NS"],
     ["Find one for me", "Screen NIFTY50 and rank it. No symbol needed.", "screen:NIFTY50"],
     ["Screen a sector", "Rank Information Technology and see what fits the book.", "screen:Information Technology"],
+    ["Let it trade (paper)", "Autopilot: screen NIFTYIT, place the orders, manage the book. Simulated.", "autopilot:NIFTYIT"],
     ["Re-decide a past session", "Set an as-of date below, then name a stock. Only what was knowable then.", "ask:TCS.NS"],
   ];
   return `
@@ -619,6 +778,8 @@ $("ask").onsubmit = (e) => {
   const raw = $("q").value.trim();
   if (!raw || state.running) return;
   $("q").value = "";
+  const autoMatch = raw.match(/^\s*autopilot\s+(.+)$/i);
+  if (autoMatch) return void runAutopilot(autoMatch[1].trim());
   const screenMatch = raw.match(/^\s*screen\s+(.+)$/i);
   if (screenMatch) runScreen(screenMatch[1].trim());
   else analyse(raw.toUpperCase());
@@ -632,6 +793,7 @@ document.addEventListener("click", (e) => {
   if (card && !state.running) {
     const [kind, arg] = card.dataset.act.split(/:(.+)/);
     if (kind === "screen") runScreen(arg);
+    else if (kind === "autopilot") runAutopilot(arg);
     else analyse(arg);
   }
 });

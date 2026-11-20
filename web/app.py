@@ -49,6 +49,12 @@ _runners_lock = threading.Lock()
 # number run at once is how a 512 MB container gets OOM-killed.
 _slots = threading.Semaphore(int(os.getenv("ITA_WEB_CONCURRENCY", "2")))
 
+# The paper book is shared mutable state: one file, read-modify-written by
+# every pass. Two passes at once would interleave fills and lose orders, so
+# autopilot is serialised on its own lock rather than on the analysis slots.
+_BOOK_PATH = Path(os.getenv("ITA_PAPER_BOOK", "results/paper_book.json"))
+_book_lock = threading.Lock()
+
 app = FastAPI(
     title="IndianTradingAgents",
     description="Multi-agent LLM trading research for NSE & BSE.",
@@ -437,6 +443,169 @@ def screen_universe(req: ScreenRequest) -> dict[str, Any]:
         "runs_expected": len(symbols) + min(
             len(symbols), int(build_config().get("max_open_positions", 12))
         ),
+    }
+
+
+class AutopilotRequest(BaseModel):
+    universe: str = Field("NIFTY50", max_length=400)
+    max_new_positions: int = Field(3, ge=1, le=12)
+    square_off: bool = Field(False)
+    rank_by: str = Field("reward_risk")
+    capital_inr: float = Field(1_000_000.0, gt=0, le=1e11)
+    profile: str = Field("retail")
+    as_of: str | None = Field(None, max_length=10)
+
+
+def _load_broker(capital_inr: float):
+    """The paper book as it stands, or a fresh one at this capital."""
+    from tradingagents_in.paper import PaperBroker
+
+    if _BOOK_PATH.is_file():
+        broker = PaperBroker.load(_BOOK_PATH, config=build_config())
+    else:
+        broker = PaperBroker(
+            starting_cash_inr=capital_inr,
+            config=build_config(),
+            state_path=_BOOK_PATH,
+        )
+    broker.state_path = _BOOK_PATH
+    return broker
+
+
+def _book_payload(broker) -> dict[str, Any]:
+    # Same reasoning as the orders: the model serialises itself, including
+    # the computed properties a hand-written mapping would miss.
+    positions = [p.to_dict() for p in broker.positions()]
+    funds = broker.funds()
+    return {
+        # Set here, not by the caller: this payload also travels over SSE at
+        # the end of an autopilot pass, and a console that only learns
+        # "exists" from GET /api/book renders a freshly filled book as empty.
+        "exists": True,
+        "equity_inr": broker.equity_inr(),
+        "cash_inr": funds.cash_inr,
+        "starting_cash_inr": funds.starting_cash_inr,
+        "realised_pnl_inr": funds.realised_pnl_inr,
+        "positions": positions,
+        # Both the model's own to_dict and the broker's own open predicate.
+        # Hand-rolling either invents fields that do not exist (Order has
+        # limit_price, not price) or filters on statuses that do not exist
+        # (there is no "OPEN"), and both fail quietly or at the wrong time.
+        "open_orders": [o.to_dict() for o in broker.orders(open_only=True)],
+        "simulated": True,
+    }
+
+
+@app.get("/api/book")
+def book() -> dict[str, Any]:
+    """The paper book. Simulated throughout - no order ever leaves this process."""
+    if not _BOOK_PATH.is_file():
+        return {
+            "exists": False, "simulated": True, "positions": [], "open_orders": [],
+            "note": "No paper book yet. Run autopilot to start one.",
+        }
+    with _book_lock:
+        return _book_payload(_load_broker(1_000_000.0))
+
+
+@app.delete("/api/book")
+def reset_book() -> dict[str, Any]:
+    """Start again from flat. The only destructive call in this API."""
+    with _book_lock:
+        existed = _BOOK_PATH.is_file()
+        if existed:
+            _BOOK_PATH.unlink()
+    return {"reset": True, "existed": existed}
+
+
+@app.post("/api/autopilot")
+def autopilot(req: AutopilotRequest) -> dict[str, Any]:
+    """One autonomous pass: mark the book, screen, enter what it does not hold.
+
+    Deliberately one pass rather than a daemon. The saved book *is* the
+    state, so a pass is resumable and auditable, and nothing keeps trading
+    because a process was left running.
+
+    Everything here is simulated. No order leaves this process.
+    """
+    from tradingagents_in.screen import resolve_universe
+
+    universe = req.universe.strip()
+    try:
+        symbols = resolve_universe(universe)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    if req.rank_by not in RANK_KEYS:
+        raise HTTPException(
+            status_code=422, detail=f"rank_by must be one of {', '.join(RANK_KEYS)}"
+        )
+    as_of = (req.as_of or "").strip() or None
+    if as_of is not None:
+        try:
+            parse_date(as_of)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="as_of must be YYYY-MM-DD") from None
+
+    if not _slots.acquire(blocking=False):
+        raise HTTPException(status_code=503, detail="All analysis slots are busy.")
+
+    run = registry.create(universe.upper(), kind="screen")
+
+    def work() -> dict[str, Any]:
+        from tradingagents_in.autopilot import run_pass
+
+        runner = _runner(req.capital_inr, req.profile)
+        # One pass at a time: the book is one file, read-modify-written.
+        with _book_lock:
+            broker = _load_broker(req.capital_inr)
+
+            # Re-price what is held before anything new is considered, so a
+            # stop is judged on this pass rather than on a stale fill price.
+            held = list(broker.positions())
+            prices: dict[str, float] = {}
+            for index, position in enumerate(held, start=1):
+                run.publish({
+                    "type": "progress", "phase": "mark", "completed": index,
+                    "total": len(held), "symbol": position.symbol,
+                })
+                try:
+                    decision = runner.analyse(position.symbol, as_of=as_of, save=False)
+                    zone = getattr(decision.proposal, "entry_zone", None)
+                    if zone:
+                        prices[position.symbol] = round((zone.low + zone.high) / 2, 2)
+                except Exception as exc:  # noqa: BLE001 - a stale mark beats no pass
+                    log.warning("could not re-price %s: %s", position.symbol, exc)
+
+            result = run_pass(
+                runner, broker, universe,
+                as_of=as_of,
+                prices=prices or None,
+                max_new_positions=req.max_new_positions,
+                square_off=req.square_off,
+                rank_by=req.rank_by,
+            )
+            broker.save(_BOOK_PATH)
+            out = result.summary()
+            out["book"] = _book_payload(broker)
+        out["orders"] = [o.to_dict() for o in result.placed]
+        return out
+
+    def body() -> None:
+        try:
+            registry.execute(run, work, result_type="autopilot")
+        finally:
+            _slots.release()
+
+    threading.Thread(target=body, name=f"autopilot-{run.run_id}", daemon=True).start()
+    return {
+        "run_id": run.run_id,
+        "universe": universe.upper(),
+        "status": run.status,
+        "names": len(symbols),
+        "runs_expected": len(symbols) + min(
+            len(symbols), int(build_config().get("max_open_positions", 12))
+        ),
+        "simulated": True,
     }
 
 

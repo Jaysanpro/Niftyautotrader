@@ -382,3 +382,20 @@ kbd {
 
 /* A screen forwards warnings only, so they are worth marking. */
 .trace-line.warn span:last-child { color: var(--warn); }
+
+/* ---- paper book -------------------------------------------------------- */
+/* The book is simulated, and that has to stay visible rather than be read
+   once in a disclaimer and forgotten. */
+.tag.warn-tag {
+  color: var(--warn);
+  border: 1px solid #4a3c12;
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-size: 11px;
+  letter-spacing: .04em;
+  vertical-align: middle;
+  margin-left: 8px;
+}
+.screen-table td.up, .kv td.up { color: var(--long); }
+.screen-table td.down, .kv td.down { color: var(--short); }
+.screen-table th.n, .screen-table td.n { text-align: right; font-variant-numeric: tabular-nums; }
