@@ -27,7 +27,7 @@ you get in production; only the tape and the wording change.
 
 # RELIANCE (RELIANCE.NS) — HOLD [NOT TAKEN]
 
-_2026-11-20 13:31 IST · run `SAMPLE-RELIANCE-01` · offline · 0.4s_
+_2026-11-20 18:23 IST · run `SAMPLE-RELIANCE-01` · offline · 0.4s_
 
 ## Decision
 
@@ -229,7 +229,7 @@ Sentiment on RELIANCE is broadly neutral (-0.10) with elevated chatter across 3 
 **News Macro Analyst - RELIANCE.NS**  
 Stance: `MILDLY_BULLISH` | Confidence: 44%
 
-Macro backdrop for RELIANCE (Energy): range-bound / mixed — no single dominant cross-asset driver. FII net buy Rs 1,240 cr; DII net buy Rs 860 cr. Both sides buying - the strongest flow backdrop for a sustained up-move. Session context: REGULAR, 4 sessions to weekly expiry.
+Macro backdrop for RELIANCE (Energy): range-bound / mixed — no single dominant cross-asset driver. FII net buy Rs 1,240 cr; DII net buy Rs 860 cr. Both sides buying - the strongest flow backdrop for a sustained up-move. Session context: CLOSED, 4 sessions to weekly expiry.
 
 **Key points**
 - Macro regime: range-bound / mixed — no single dominant cross-asset driver
@@ -265,8 +265,8 @@ RELIANCE at Rs 2,813.46 is in a sideways on the 1d timeframe with RSI at 44 and 
 
 - Sources retrieved: prices, quote, benchmark, fundamentals, peers, corporate_actions, news, sentiment, macro, flows, microstructure
 - Sources failed: none
-- Data gather time: 0.33s
-- Node timings (ms): analyst.fundamentals 0, analyst.news_macro 0, analyst.sentiment 0, analyst.technical 25, gather 328, memory 0, portfolio_manager 0, research_manager 0, researcher.bear 0, researcher.bull 0, risk_manager 0, trader 6
+- Data gather time: 0.38s
+- Node timings (ms): analyst.fundamentals 0, analyst.news_macro 0, analyst.sentiment 0, analyst.technical 24, gather 384, memory 1, portfolio_manager 0, research_manager 0, researcher.bear 0, researcher.bull 0, risk_manager 0, trader 9
 
 ---
 

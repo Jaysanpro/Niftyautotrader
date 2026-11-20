@@ -138,6 +138,35 @@ are computed in full before any model is called, and the pure-Python risk
 rulebook outranks whatever a model says. The LLM adds reasoning and
 narration; it does not add the decision.
 
+## If the trace says 401 / invalid x-api-key
+
+The key is set but the provider is rejecting it. The desk carries on
+deterministically, so you still get decisions - but no model is answering.
+
+Check, in this order:
+
+1. **Quotes.** Dashboards store a value exactly as typed, so a field filled
+   in as `"sk-ant-..."` makes the quotes part of the secret. The app now
+   strips a matching pair and surrounding whitespace before use, but a
+   stray quote on one side is left alone deliberately - that is a typo
+   worth seeing rather than hiding.
+2. **Truncation.** Anthropic keys are long; a partial paste looks plausible
+   and fails the same way.
+3. **The key itself.** Revoked, from another workspace, or an OpenAI key in
+   `ANTHROPIC_API_KEY`.
+
+A rejected key is latched for the life of the process: the first 401 is
+logged, every later call goes straight to the deterministic draft, and
+nothing is retried. That is deliberate. An invalid key is not a transient
+fault, and the retry policy that treated it as one turned a NIFTY50 screen
+into **1,920 doomed requests and 64 minutes of backoff sleeping** before
+producing the answer it already had. Rate limits, timeouts and 5xx are
+still retried normally.
+
+Because it is latched per process, **fix the key and redeploy** (or restart
+the service) - setting the variable alone will not clear it. Hosts that
+restart on a variable change, Railway included, do this for you.
+
 ## How long a screen takes
 
 Worth knowing before you run one, because the honest answer is "minutes".

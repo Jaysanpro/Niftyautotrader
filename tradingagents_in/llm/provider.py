@@ -121,6 +121,30 @@ def provider_is_offline(config: dict[str, Any]) -> bool:
     return str(config.get("llm_provider", "")).lower() in ("offline", "none", "")
 
 
+def read_api_key(env_key: str | None) -> str | None:
+    """The provider's key, cleaned of what hosting dashboards add.
+
+    Several dashboards store a value exactly as typed, quotes included, so a
+    field filled in as "sk-ant-..." arrives with the quotes as part of the
+    secret. That reaches the API as an invalid key and comes back as a 401
+    that looks nothing like a quoting mistake. Trailing whitespace from a
+    copy-paste does the same.
+
+    Only a matching pair of surrounding quotes is stripped - a quote on one
+    side is left alone, because that is a key someone typed oddly rather
+    than a wrapped one, and silently altering it would hide the real fault.
+    """
+    if not env_key:
+        return None
+    raw = os.environ.get(env_key)
+    if raw is None:
+        return None
+    value = raw.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        value = value[1:-1].strip()
+    return value or None
+
+
 def missing_api_key(config: dict[str, Any]) -> str | None:
     """The env var a configured provider needs but does not have, if any.
 
@@ -136,7 +160,7 @@ def missing_api_key(config: dict[str, Any]) -> str | None:
     spec = PROVIDERS.get(str(config.get("llm_provider", "")).lower())
     if spec is None or not spec.env_key:
         return None
-    return None if os.environ.get(spec.env_key) else spec.env_key
+    return None if read_api_key(spec.env_key) else spec.env_key
 
 
 def resolve_model(config: dict[str, Any], tier: str) -> str:
@@ -160,13 +184,18 @@ def build_chat_model(config: dict[str, Any], tier: str = "quick") -> Any:
     if provider == "offline":
         raise LLMUnavailable("offline provider has no chat model")
 
-    if spec.env_key and not os.getenv(spec.env_key):
+    if spec.env_key and not read_api_key(spec.env_key):
         raise LLMUnavailable(
             f"{spec.env_key} is not set. Export it, or set ITA_LLM_PROVIDER=offline "
             "to run the deterministic engine."
         )
 
     model = resolve_model(config, tier)
+    # Passed explicitly to every integration rather than left to be picked up
+    # from the environment, so the cleaning in read_api_key actually applies.
+    # ChatAnthropic, ChatGoogleGenerativeAI and ChatGroq all read their own
+    # env var otherwise, which quietly bypassed it.
+    api_key = read_api_key(spec.env_key) if spec.env_key else "not-needed"
     common: dict[str, Any] = {
         "temperature": float(config.get("llm_temperature", 0.2)),
         "timeout": config.get("llm_timeout_seconds", 120),
@@ -189,13 +218,16 @@ def build_chat_model(config: dict[str, Any], tier: str = "quick") -> Any:
                     "ITA_LLM_TEMPERATURE is not being sent.",
                     model,
                 )
-            return ChatAnthropic(model=model, max_tokens=max_tokens or 4096, **kwargs)
+            return ChatAnthropic(
+                model=model, api_key=api_key, max_tokens=max_tokens or 4096, **kwargs
+            )
 
         if provider == "google":
             from langchain_google_genai import ChatGoogleGenerativeAI  # noqa: PLC0415
 
             return ChatGoogleGenerativeAI(
                 model=model,
+                api_key=api_key,
                 temperature=common["temperature"],
                 max_output_tokens=max_tokens,
                 timeout=common["timeout"],
@@ -204,7 +236,9 @@ def build_chat_model(config: dict[str, Any], tier: str = "quick") -> Any:
         if provider == "groq":
             from langchain_groq import ChatGroq  # noqa: PLC0415
 
-            return ChatGroq(model=model, max_tokens=max_tokens, **common)
+            return ChatGroq(
+                model=model, api_key=api_key, max_tokens=max_tokens, **common
+            )
 
         if provider == "ollama":
             from langchain_ollama import ChatOllama  # noqa: PLC0415
@@ -222,7 +256,7 @@ def build_chat_model(config: dict[str, Any], tier: str = "quick") -> Any:
         return ChatOpenAI(
             model=model,
             base_url=config.get("llm_base_url") or spec.base_url,
-            api_key=os.getenv(spec.env_key) if spec.env_key else "not-needed",
+            api_key=api_key,
             max_tokens=max_tokens,
             **common,
         )
@@ -249,6 +283,6 @@ def available_providers() -> list[str]:
     for name, spec in PROVIDERS.items():
         if name == "offline":
             continue
-        if spec.env_key is None or os.getenv(spec.env_key):
+        if spec.env_key is None or read_api_key(spec.env_key):
             ready.append(name)
     return ready

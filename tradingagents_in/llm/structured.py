@@ -41,6 +41,68 @@ _REPORTED_UNAVAILABLE: set[str] = set()
 _REPORT_LOCK = threading.Lock()
 
 
+# Set once a provider rejects our credentials. An invalid key is not a
+# transient fault, so every later call in this process would fail the same
+# way; the latch turns thousands of doomed requests into one.
+_CREDENTIALS_REJECTED: dict[str, str] = {}
+
+
+def _status_of(exc: Exception) -> int | None:
+    """HTTP status behind an SDK exception, wherever it hung it."""
+    for owner in (exc, getattr(exc, "response", None), getattr(exc, "body", None)):
+        if owner is None:
+            continue
+        for attr in ("status_code", "status"):
+            value = getattr(owner, attr, None)
+            if isinstance(value, int):
+                return value
+    return None
+
+
+def is_auth_failure(exc: Exception) -> bool:
+    """Did the provider reject our credentials rather than our request?
+
+    Worth its own test because the answer decides whether retrying is
+    sensible or just expensive: a 401 will be a 401 on every attempt.
+    """
+    if _status_of(exc) in (401, 403):
+        return True
+    text = str(exc).lower()
+    return any(
+        marker in text
+        for marker in (
+            "authentication_error",
+            "invalid x-api-key",
+            "invalid_api_key",
+            "incorrect api key",
+            "permission_error",
+            "unauthorized",
+        )
+    )
+
+
+def is_retryable(exc: Exception) -> bool:
+    """Could this same call plausibly succeed if tried again?
+
+    Rate limits, timeouts, overloads and 5xx are worth another attempt.
+    Bad credentials and a malformed request are not: retrying them burns
+    time and quota to arrive at the same error. With a bad key, a NIFTY50
+    screen was making 1,920 doomed calls and sleeping 64 minutes in backoff
+    to reach the deterministic answer it would have reached at once.
+    """
+    if is_auth_failure(exc):
+        return False
+    status = _status_of(exc)
+    if status in (400, 404, 422):
+        return False
+    if status == 429 or (status is not None and status >= 500):
+        return True
+    text = str(exc).lower()
+    if "invalid_request_error" in text or "model_not_found" in text:
+        return False
+    return True
+
+
 def _warn_unavailable_once(reason: str) -> None:
     """Report an unusable provider once per process, then stay quiet.
 
@@ -118,6 +180,18 @@ def call_structured(
             )
         return fallback, meta
 
+    provider = str(config.get("llm_provider", "")).lower()
+    rejected = _CREDENTIALS_REJECTED.get(provider)
+    if rejected is not None:
+        # The key was already rejected once in this process. Every agent on
+        # every name would get the same 401, so there is nothing to learn
+        # from asking again - just latency and quota.
+        log.debug("%s credentials already rejected (%s); using the draft", provider, rejected)
+        meta.error, meta.fell_back = rejected, True
+        if fallback is None:
+            raise LLMUnavailable(rejected)
+        return fallback, meta
+
     started = time.time()
     try:
         model = _get_model(config, tier)
@@ -172,6 +246,19 @@ def call_structured(
             )
         except Exception as exc:
             last_error = exc
+            if is_auth_failure(exc):
+                # Latch the whole provider, not just this call: the key is
+                # wrong for every agent and every name that follows.
+                reason = (
+                    f"{provider} rejected the API key "
+                    f"({str(exc).strip()[:160]})"
+                )
+                _CREDENTIALS_REJECTED[provider] = reason
+                _warn_unavailable_once(reason)
+                break
+            if not is_retryable(exc):
+                log.warning("LLM call failed, not retryable: %s", exc)
+                break
             log.warning("LLM call failed (attempt %d/%d): %s", attempt, max_attempts, exc)
             if attempt < max_attempts:
                 time.sleep(min(2 ** attempt, 8))
@@ -181,7 +268,7 @@ def call_structured(
     meta.fell_back = True
     if fallback is None:
         raise LLMUnavailable(f"structured call failed after {max_attempts} attempts: {last_error}")
-    log.warning("falling back to deterministic output for %s", schema.__name__)
+    log.info("falling back to deterministic output for %s", schema.__name__)
     return fallback, meta
 
 
@@ -195,10 +282,20 @@ def call_text(
     """Plain-text completion. Used only for narrative summaries, never decisions."""
     if provider_is_offline(config):
         return fallback
+    provider = str(config.get("llm_provider", "")).lower()
+    if provider in _CREDENTIALS_REJECTED:
+        return fallback
     try:
         model = _get_model(config, tier)
         response = model.invoke([("system", system_prompt), ("human", user_prompt)])
         return getattr(response, "content", str(response)) or fallback
     except Exception as exc:
-        log.warning("text call failed: %s", exc)
+        # Same latch as the structured path: a rejected key is rejected for
+        # every later call too, and narration is not worth a retry storm.
+        if is_auth_failure(exc):
+            reason = f"{provider} rejected the API key ({str(exc).strip()[:160]})"
+            _CREDENTIALS_REJECTED[provider] = reason
+            _warn_unavailable_once(reason)
+        else:
+            log.warning("text call failed: %s", exc)
         return fallback

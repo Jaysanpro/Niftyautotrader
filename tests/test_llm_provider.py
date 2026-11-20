@@ -13,6 +13,7 @@ import sys
 import types
 
 import pytest
+from pydantic import BaseModel
 
 from tradingagents_in.config.default_config import build_config
 from tradingagents_in.llm.provider import (
@@ -233,3 +234,131 @@ def test_a_different_failure_still_gets_its_own_warning(monkeypatch, caplog):
         structured._warn_unavailable_once("langchain_anthropic is not installed")
     warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
     assert len(warnings) == 2
+
+
+# ------------------------------------------------ keys that arrive mangled
+
+
+def test_a_quoted_key_is_unwrapped(monkeypatch):
+    """Dashboards store a value as typed, quotes included.
+
+    A field filled in as "sk-ant-..." arrives with the quotes as part of the
+    secret, reaches the API as an invalid key, and comes back as a 401 that
+    looks nothing like a quoting mistake.
+    """
+    from tradingagents_in.llm.provider import read_api_key
+
+    for wrapped in ('"sk-ant-abc"', "'sk-ant-abc'", "  sk-ant-abc  ", '  "sk-ant-abc" '):
+        monkeypatch.setenv("ITA_TEST_KEY", wrapped)
+        assert read_api_key("ITA_TEST_KEY") == "sk-ant-abc", wrapped
+
+
+def test_a_single_stray_quote_is_left_alone(monkeypatch):
+    """Only a matching pair is stripped.
+
+    A quote on one side is a key someone typed oddly, not a wrapped one, and
+    silently altering it would hide the real fault.
+    """
+    from tradingagents_in.llm.provider import read_api_key
+
+    monkeypatch.setenv("ITA_TEST_KEY", '"sk-ant-abc')
+    assert read_api_key("ITA_TEST_KEY") == '"sk-ant-abc'
+
+
+def test_an_empty_key_reads_as_absent(monkeypatch):
+    from tradingagents_in.llm.provider import read_api_key
+
+    monkeypatch.setenv("ITA_TEST_KEY", '""')
+    assert read_api_key("ITA_TEST_KEY") is None
+    monkeypatch.setenv("ITA_TEST_KEY", "   ")
+    assert read_api_key("ITA_TEST_KEY") is None
+
+
+# -------------------------------------------------------- what to retry
+
+
+def _err(message: str, status: int | None = None) -> Exception:
+    exc = Exception(message)
+    if status is not None:
+        exc.status_code = status
+    return exc
+
+
+def test_credentials_errors_are_not_retried():
+    """A 401 will be a 401 on every attempt.
+
+    Retrying it burns time and quota to reach the same answer. With a bad
+    key a NIFTY50 screen made 1,920 doomed calls and slept 64 minutes in
+    backoff before producing the deterministic result it had all along.
+    """
+    from tradingagents_in.llm.structured import is_auth_failure, is_retryable
+
+    for exc in (
+        _err("Error code: 401 - {'type': 'authentication_error'}", 401),
+        _err("invalid x-api-key", 401),
+        _err("permission_error", 403),
+        _err("Unauthorized"),
+    ):
+        assert is_auth_failure(exc), exc
+        assert not is_retryable(exc), exc
+
+
+def test_transient_failures_are_still_retried():
+    """Silencing the hopeless cases must not silence the recoverable ones."""
+    from tradingagents_in.llm.structured import is_auth_failure, is_retryable
+
+    for exc in (
+        _err("rate_limit_error", 429),
+        _err("internal server error", 500),
+        _err("overloaded_error", 529),
+        _err("Request timed out"),
+        _err("Connection reset by peer"),
+    ):
+        assert not is_auth_failure(exc), exc
+        assert is_retryable(exc), exc
+
+
+def test_a_malformed_request_is_not_retried():
+    from tradingagents_in.llm.structured import is_retryable
+
+    assert not is_retryable(_err("invalid_request_error", 400))
+    assert not is_retryable(_err("model_not_found", 404))
+
+
+def test_a_rejected_key_stops_every_later_call(monkeypatch):
+    """One 401 latches the provider for the process.
+
+    Without the latch each agent on each name still makes its own doomed
+    call: 640 of them in one NIFTY50 screen, for nothing.
+    """
+    from tradingagents_in.llm import structured
+
+    monkeypatch.setattr(structured, "_CREDENTIALS_REJECTED", {})
+    monkeypatch.setattr(structured, "_REPORTED_UNAVAILABLE", set())
+
+    attempts = {"n": 0}
+
+    class Rejecting:
+        status_code = 401
+
+        def with_structured_output(self, schema):
+            return self
+
+        def invoke(self, messages):
+            attempts["n"] += 1
+            raise _err("Error code: 401 - invalid x-api-key", 401)
+
+    monkeypatch.setattr(structured, "_get_model", lambda cfg, tier: Rejecting())
+
+    class Draft(BaseModel):
+        value: int = 1
+
+    cfg = {"llm_provider": "anthropic"}
+    for _ in range(25):
+        result, meta = structured.call_structured(
+            cfg, Draft, "system", "user", fallback=Draft()
+        )
+        assert result.value == 1, "the deterministic draft must still come back"
+        assert meta.fell_back
+
+    assert attempts["n"] == 1, f"expected one doomed call, made {attempts['n']}"
